@@ -663,6 +663,52 @@ Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/infra/domains/default/s
 "
 `;
 
+exports[`generators (snapshots) > nsx-sdk output is stable 1`] = `
+"# Install-Module VMware.Sdk.Nsx.Policy
+Import-Module VMware.Sdk.Nsx.Policy
+Connect-NsxServer -Server '<nsx-manager>' -Credential (Get-Credential)
+
+$rules = @()
+$rules += Initialize-Rule -Id 'web-in' \`
+    -DisplayName 'web-in' \`
+    -SequenceNumber 10 \`
+    -Action 'ALLOW' \`
+    -Direction 'IN' \`
+    -SourceGroups @('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16') \`
+    -DestinationGroups @('10.10.10.0/24') \`
+    -Services @('/infra/services/HTTPS') \`
+    -Scope @('ANY') \`
+    -Logged $false
+
+$rules += Initialize-Rule -Id 'dns-out' \`
+    -DisplayName 'dns-out' \`
+    -SequenceNumber 20 \`
+    -Action 'ALLOW' \`
+    -Direction 'OUT' \`
+    -SourceGroups @('ANY') \`
+    -DestinationGroups @('1.1.1.1', '8.8.8.8') \`
+    -Services @('/infra/services/DNS-UDP') \`
+    -Scope @('ANY') \`
+    -Logged $false
+
+$rules += Initialize-Rule -Id 'deny-rest' \`
+    -DisplayName 'deny-rest' \`
+    -SequenceNumber 30 \`
+    -Action 'DROP' \`
+    -Direction 'IN' \`
+    -SourceGroups @('ANY') \`
+    -DestinationGroups @('ANY') \`
+    -Services @('ANY') \`
+    -Scope @('ANY') \`
+    -Logged $false
+
+$policy = Initialize-SecurityPolicy -Id 'generated' -DisplayName 'generated' -Category 'Application' -Rules $rules
+
+# PATCH creates or updates the whole policy in one call (idempotent).
+Invoke-PatchSecurityPolicyForDomain -DomainId 'default' -SecurityPolicyId 'generated' -SecurityPolicy $policy
+"
+`;
+
 exports[`generators (snapshots) > panos output is stable 1`] = `
 "terraform {
   required_providers {

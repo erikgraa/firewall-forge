@@ -16,7 +16,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 | | Target | Output |
 | --- | --- | --- |
-| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (Policy API `Invoke-RestMethod`) |
+| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (`VMware.Sdk.Nsx.Policy` module, or the Policy REST API via `Invoke-RestMethod`) |
 | 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |

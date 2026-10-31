@@ -682,9 +682,8 @@ resource ${nsg} 'Microsoft.AzureStackHCI/networkSecurityGroups@2025-09-01-previe
 ${body.join('\n')}`
 }
 
-const nsxPs = (rules: Rule[], { policyName }: Options) => {
-  const id = slug(policyName)
-  const nsxRules = active(rules).map((r, i) => {
+const nsxRuleModels = (rules: Rule[]) =>
+  active(rules).map((r, i) => {
     const src = prefixes(r.source, 'nsx')
     const dst = prefixes(r.destination, 'nsx')
     const svc = SERVICES[r.service]
@@ -715,7 +714,10 @@ const nsxPs = (rules: Rule[], { policyName }: Options) => {
     if (r.notes.trim()) rule.notes = r.notes.trim()
     return rule
   })
-  const body = JSON.stringify({ display_name: policyName, category: 'Application', rules: nsxRules }, null, 2)
+
+const nsxPs = (rules: Rule[], { policyName }: Options) => {
+  const id = slug(policyName)
+  const body = JSON.stringify({ display_name: policyName, category: 'Application', rules: nsxRuleModels(rules) }, null, 2)
   return `$nsx  = 'https://<nsx-manager>'
 $cred = Get-Credential
 
@@ -726,6 +728,45 @@ ${body}
 # PATCH creates or updates the whole policy in one call (idempotent).
 Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/infra/domains/default/security-policies/${id}" \`
   -Credential $cred -ContentType 'application/json' -Body $body -SkipCertificateCheck
+`
+}
+
+const nsxSdk = (rules: Rule[], { policyName }: Options) => {
+  const ps = (a: unknown) => `@(${(a as string[]).map((x) => `'${x.replace(/'/g, "''")}'`).join(', ')})`
+  const q = (s: string) => `'${s.replace(/'/g, "''")}'`
+  const blocks = nsxRuleModels(rules).map((m, i) => {
+    const entries = (m.service_entries as { display_name: string; l4_protocol: string; destination_ports: string[] }[] | undefined) ?? []
+    const entryVars = entries.map((e, n) => {
+      const v = `$svc${i}_${n}`
+      return { v, line: `${v} = Initialize-L4PortSetServiceEntry -DisplayName ${q(e.display_name)} -L4Protocol ${q(e.l4_protocol)} -DestinationPorts ${ps(e.destination_ports)}` }
+    })
+    const args = [
+      `-Id ${q(m.id as string)}`,
+      `-DisplayName ${q(m.display_name as string)}`,
+      `-SequenceNumber ${m.sequence_number}`,
+      `-Action ${q(m.action as string)}`,
+      `-Direction ${q(m.direction as string)}`,
+      `-SourceGroups ${ps(m.source_groups)}`,
+      `-DestinationGroups ${ps(m.destination_groups)}`,
+      `-Services ${ps(m.services)}`,
+      ...(entryVars.length ? [`-ServiceEntries @(${entryVars.map((e) => e.v).join(', ')})`] : []),
+      `-Scope ${ps(m.scope)}`,
+      `-Logged $${m.logged}`,
+      ...(m.notes ? [`-Notes ${q(m.notes as string)}`] : []),
+    ]
+    return [...entryVars.map((e) => e.line), `$rules += Initialize-Rule ${args.join(' `\n    ')}`].join('\n')
+  })
+  return `# Install-Module VMware.Sdk.Nsx.Policy
+Import-Module VMware.Sdk.Nsx.Policy
+Connect-NsxServer -Server '<nsx-manager>' -Credential (Get-Credential)
+
+$rules = @()
+${blocks.join('\n\n')}
+
+$policy = Initialize-SecurityPolicy -Id ${q(slug(policyName))} -DisplayName ${q(policyName)} -Category 'Application' -Rules $rules
+
+# PATCH creates or updates the whole policy in one call (idempotent).
+Invoke-PatchSecurityPolicyForDomain -DomainId 'default' -SecurityPolicyId ${q(slug(policyName))} -SecurityPolicy $policy
 `
 }
 
@@ -1013,7 +1054,8 @@ ${[...svcTasks, ...ruleTasks].join('\n\n')}
 
 export const TARGETS: Target[] = [
   { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
-  { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell', filename: 'nsx-policy.ps1', generate: nsxPs },
+  { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (REST)', filename: 'nsx-policy-rest.ps1', generate: nsxPs },
+  { id: 'nsx-sdk', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (SDK)', filename: 'nsx-policy.ps1', generate: nsxSdk },
   { id: 'sdn-ps', platform: 'sdn', label: 'SDN ACL', format: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
   { id: 'azl-nsg', platform: 'azl', label: 'Azure Local NSG', format: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
   { id: 'azl-bicep', platform: 'azl', label: 'Azure Local NSG', format: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },

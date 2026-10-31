@@ -179,6 +179,15 @@ describe('generators (behaviour)', () => {
     expect(text).toContain("service: ['tcp-443']")
   })
 
+  it('nsx sdk uses the VMware.Sdk.Nsx.Policy cmdlets with inline service entries', () => {
+    const text = out('nsx-sdk', [rule({ name: "it's", service: 'SMB (TCP 445)', ports: '445', logging: true })])
+    expect(text).toContain('Connect-NsxServer')
+    expect(text).toContain('Initialize-L4PortSetServiceEntry')
+    expect(text).toContain("-DisplayName 'it''s'")
+    expect(text).toContain('-ServiceEntries @($svc0_0)')
+    expect(text).toContain('Invoke-PatchSecurityPolicyForDomain -DomainId')
+  })
+
   it('panos creates service objects and references them', () => {
     const text = out('panos', [rule({ ports: '443' })])
     expect(text).toContain('resource "panos_service" "tcp-443"')

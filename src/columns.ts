@@ -24,6 +24,7 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   nsx: ['scope', 'logging', 'notes'],
   'nsx-ps': ['scope', 'logging', 'notes'],
+  'nsx-sdk': ['scope', 'logging', 'notes'],
   'sdn-ps': ['priority', 'logging'],
   'azl-nsg': ['priority'],
   'azl-bicep': ['priority', 'notes'],
