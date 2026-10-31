@@ -37,8 +37,7 @@ body {
 .top p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
 .logo { width: 52px; height: 52px; filter: drop-shadow(0 6px 18px #6366f166); }
 
-main { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; }
-@media (max-width: 1700px) { main { grid-template-columns: 1fr; } }
+main { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
 
 .panel {
   min-width: 0;
@@ -118,7 +117,7 @@ input:disabled { opacity: .45; }
 
 .code {
   margin: 0; background: #060a16; border: 1px solid var(--line); border-radius: 10px;
-  padding: 14px; overflow: auto; max-height: 560px; min-height: 240px;
+  padding: 14px; overflow: auto; max-height: 640px; min-height: 240px;
   font: 12.5px/1.55 'Cascadia Code', Consolas, monospace; color: #cbd5e1; white-space: pre;
 }
 .t-c { color: #64748b; font-style: italic; }
