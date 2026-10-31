@@ -135,3 +135,6 @@ footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 2
 .dialog textarea { min-height: 170px; font-family: Consolas, monospace; font-size: 12.5px; }
 .dialog .actions { justify-content: flex-end; }
 code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+
+.inline-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; padding-bottom: 6px; }
+.inline-switch .switch { margin-left: 0; }

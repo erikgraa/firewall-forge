@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="public/icon.svg" alt="Firewall rule forge icon" width="120" />
+<img src="public/icon.svg" alt="Firewall Forge icon" width="120" />
 
-# 🔥 Firewall rule forge
+# 🔥 Firewall Forge
 
 **Define your firewall rules once — forge config for every platform.** 🛡️
 
@@ -28,7 +28,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 - 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
-- 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on)
+- 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld can emit permanent or runtime-only rules
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
 - 📥 CSV / spreadsheet import, 📋 copy and 💾 download of the generated output
 - 🗂️ Rules are saved in your browser's local storage

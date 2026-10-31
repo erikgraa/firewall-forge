@@ -11,6 +11,7 @@ export interface Target {
 
 export interface Options {
   policyName: string
+  permanent: boolean
 }
 
 const prefixes = (value: string, key: 'nsx' | 'net'): string[] => {
@@ -160,7 +161,7 @@ const windows = (rules: Rule[], { policyName }: Options) => {
   return lines.join('\n') + '\n'
 }
 
-const firewalld = (rules: Rule[], { policyName }: Options) => {
+const firewalld = (rules: Rule[], { policyName, permanent }: Options) => {
   const act = (r: Rule) => ({ ALLOW: 'accept', DROP: 'drop', REJECT: 'reject' })[r.action]
   const hasOut = active(rules).some((r) => r.direction === 'Outbound')
   const lines: string[] = []
@@ -170,6 +171,7 @@ const firewalld = (rules: Rule[], { policyName }: Options) => {
       `firewall-cmd --permanent --new-policy ${slug(policyName)}-out`,
       `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-ingress-zone HOST`,
       `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-egress-zone ANY`,
+      ...(permanent ? [] : ['# Policies can only be created permanently; reload to activate before adding runtime rules', 'firewall-cmd --reload']),
       '',
     )
   }
@@ -196,12 +198,13 @@ const firewalld = (rules: Rule[], { policyName }: Options) => {
           else if (proto) rule.push(`protocol value="${proto}"`)
           if (r.logging) rule.push(`log prefix="${r.name}: " level="info"`)
           rule.push(act(r))
-          lines.push(`firewall-cmd --permanent ${target} --add-rich-rule='${rule.join(' ')}'`)
+          lines.push(`firewall-cmd${permanent ? ' --permanent' : ''} ${target} --add-rich-rule='${rule.join(' ')}'`)
         }
       }
     }
   })
-  lines.push('', 'firewall-cmd --reload')
+  if (permanent) lines.push('', 'firewall-cmd --reload')
+  else lines.push('', '# Runtime only: these rules are lost on reload or reboot. Persist them with:', '# firewall-cmd --runtime-to-permanent')
   return lines.join('\n') + '\n'
 }
 

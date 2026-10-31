@@ -15,6 +15,7 @@ interface Saved {
   rules: Rule[]
   target: TargetId
   policyName: string
+  permanent?: boolean
 }
 
 const BASE_COLS = '44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
@@ -37,13 +38,14 @@ export default function App() {
   const [rules, setRules] = useState<Rule[]>(initial.rules)
   const [target, setTarget] = useState<TargetId>(initial.target)
   const [policyName, setPolicyName] = useState(initial.policyName)
+  const [permanent, setPermanent] = useState(initial.permanent ?? true)
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName }))
-  }, [rules, target, policyName])
+    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, permanent }))
+  }, [rules, target, policyName, permanent])
 
   const current = TARGETS.find((t) => t.id === target)!
   const extras = EXTRA_COLUMNS[target]
@@ -51,7 +53,7 @@ export default function App() {
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
   const issues = useMemo(() => validate(rules), [rules])
   const errors = issues.filter((i) => i.level === 'error')
-  const code = useMemo(() => current.generate(rules, { policyName }), [current, rules, policyName])
+  const code = useMemo(() => current.generate(rules, { policyName, permanent }), [current, rules, policyName, permanent])
   const html = useMemo(() => highlight(code), [code])
 
   const patch = (id: string, change: Partial<Rule>) =>
@@ -127,7 +129,7 @@ export default function App() {
       <header className="top">
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="logo" />
         <div>
-          <h1>Firewall rule forge</h1>
+          <h1>Firewall Forge</h1>
           <p>One rule model → NSX, Windows SDN, Azure Local, Windows Firewall, firewalld and Cisco. Runs entirely in your browser.</p>
         </div>
       </header>
@@ -219,6 +221,15 @@ export default function App() {
               Policy / ACL name
               <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} />
             </label>
+            {target === 'firewalld' && (
+              <label className="inline-switch" title="Permanent rules survive a reload and reboot; runtime-only rules do not">
+                <span className="switch">
+                  <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
+                  <i />
+                </span>
+                {permanent ? 'Permanent' : 'Runtime only'}
+              </label>
+            )}
             <div className="actions">
               <button className="ghost" onClick={download}>Download {current.filename}</button>
               <button className="primary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
