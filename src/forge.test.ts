@@ -76,6 +76,20 @@ describe('generators (behaviour)', () => {
     expect(out('nftables', [rule({ protocol: 'ANY', ports: '', action: 'DROP' })])).not.toContain('l4proto any')
   })
 
+  it('fmc maps actions, literals, zones and named networks', () => {
+    const text = out('fmc', [
+      rule({ action: 'REJECT', source: 'corp-net', srcZone: 'inside', destination: '10.1.1.0/24', dstZone: 'outside', protocol: 'UDP', service: 'Custom', ports: '53', logging: true }),
+      rule({ name: 'ping', protocol: 'ICMP', ports: '' }),
+    ])
+    expect(text).toContain('action = "BLOCK_RESET"')
+    expect(text).toContain('{ value = "10.1.1.0/24" }')
+    expect(text).toContain('data.fmc_security_zone.inside.id')
+    expect(text).toContain('data "fmc_network" "corp_net"')
+    expect(text).toContain('protocol = "17", port = "53"')
+    expect(text).toContain('ICMPv4PortLiteral')
+    expect(text).toContain('log_connection_end = true')
+  })
+
   it('panos creates service objects and references them', () => {
     const text = out('panos', [rule({ ports: '443' })])
     expect(text).toContain('resource "panos_service" "tcp-443"')

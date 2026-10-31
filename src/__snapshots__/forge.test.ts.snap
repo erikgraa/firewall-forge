@@ -55,6 +55,63 @@ firewall-cmd --reload
 "
 `;
 
+exports[`generators (snapshots) > fmc output is stable 1`] = `
+"terraform {
+  required_providers {
+    fmc = {
+      source  = "CiscoDevNet/fmc"
+      version = "~> 2.0"
+    }
+  }
+}
+
+# Credentials: set FMC_USERNAME and FMC_PASSWORD in the environment.
+provider "fmc" {
+  url = "https://<fmc-host>"
+}
+
+resource "fmc_access_control_policy" "generated" {
+  name           = "generated"
+  default_action = "BLOCK"
+
+  # With manage_rules = true this resource owns the whole rule list; rules not listed here are removed.
+  manage_rules = true
+  rules = [
+    {
+      name = "web-in"
+      action = "ALLOW"
+      source_network_literals = [
+        { value = "10.0.0.0/8" },
+        { value = "172.16.0.0/12" },
+        { value = "192.168.0.0/16" }
+      ]
+      destination_network_literals = [
+        { value = "10.10.10.0/24" }
+      ]
+      destination_port_literals = [
+        { type = "PortLiteral", protocol = "6", port = "443" }
+      ]
+    },
+    {
+      name = "dns-out"
+      action = "ALLOW"
+      destination_network_literals = [
+        { value = "1.1.1.1" },
+        { value = "8.8.8.8" }
+      ]
+      destination_port_literals = [
+        { type = "PortLiteral", protocol = "17", port = "53" }
+      ]
+    },
+    {
+      name = "deny-rest"
+      action = "BLOCK"
+    }
+  ]
+}
+"
+`;
+
 exports[`generators (snapshots) > iptables output is stable 1`] = `
 "# web-in
 iptables -A INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -d 10.10.10.0/24 -p tcp --dport 443 -m comment --comment "web-in" -j ACCEPT

@@ -401,6 +401,98 @@ const iptables = (rules: Rule[]) => {
   return lines.join('\n') + '\n'
 }
 
+const fmc = (rules: Rule[], { policyName }: Options) => {
+  const q = (x: string) => `"${x}"`
+  const ident = (s: string) => s.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^(\d)/, '_$1')
+  const zoneData = new Map<string, string>()
+  const netData = new Map<string, string>()
+
+  const zoneBlock = (field: string, value: string): string[] => {
+    const names = value.trim() ? value.split(/\s*,\s*/) : []
+    if (!names.length) return []
+    const refs = names.map((n) => {
+      const key = ident(n)
+      zoneData.set(key, n)
+      return `        { id = data.fmc_security_zone.${key}.id }`
+    })
+    return [`      ${field} = [`, refs.join(',\n'), '      ]']
+  }
+
+  const netBlock = (prefix: 'source' | 'destination', value: string): string[] => {
+    const items = prefixes(value, 'nsx')
+    const literals = items.filter(isIp)
+    const named = items.filter((x) => !isIp(x))
+    const out: string[] = []
+    if (literals.length)
+      out.push(`      ${prefix}_network_literals = [`, literals.map((v) => `        { value = ${q(v)} }`).join(',\n'), '      ]')
+    if (named.length) {
+      const refs = named.map((n) => {
+        const key = ident(n)
+        netData.set(key, n)
+        return `        { id = data.fmc_network.${key}.id, type = "Network" }`
+      })
+      out.push(`      ${prefix}_network_objects = [`, refs.join(',\n'), '      ]')
+    }
+    return out
+  }
+
+  const portBlock = (r: Rule): string[] => {
+    if (r.protocol === 'ICMP') return ['      destination_port_literals = [', '        { type = "ICMPv4PortLiteral", protocol = "1" }', '      ]']
+    if (r.protocol === 'ANY') return []
+    const proto = r.protocol === 'TCP' ? '6' : '17'
+    const ports = splitPorts(r)
+    if (!ports.length) return ['      destination_port_literals = [', `        { type = "PortLiteral", protocol = "${proto}" }`, '      ]']
+    return ['      destination_port_literals = [', ports.map((p) => `        { type = "PortLiteral", protocol = "${proto}", port = ${q(p)} }`).join(',\n'), '      ]']
+  }
+
+  const body = active(rules).map((r) => {
+    const action = { ALLOW: 'ALLOW', DROP: 'BLOCK', REJECT: 'BLOCK_RESET' }[r.action]
+    const lines = [
+      `      name = ${q(r.name)}`,
+      `      action = ${q(action)}`,
+      ...zoneBlock('source_zones', r.srcZone),
+      ...zoneBlock('destination_zones', r.dstZone),
+      ...netBlock('source', r.source),
+      ...netBlock('destination', r.destination),
+      ...portBlock(r),
+    ]
+    if (r.logging) lines.push('      log_connection_end = true', '      send_events_to_fmc = true')
+    if (r.notes.trim()) lines.push(`      description = ${q(r.notes.trim())}`)
+    return `    {\n${lines.join('\n')}\n    }`
+  })
+
+  const data = [
+    ...[...zoneData.entries()].map(([k, n]) => `data "fmc_security_zone" "${k}" {\n  name = ${q(n)}\n}\n`),
+    ...[...netData.entries()].map(([k, n]) => `# Assumes an existing Network object; use fmc_host / fmc_network_group data sources for other types.\ndata "fmc_network" "${k}" {\n  name = ${q(n)}\n}\n`),
+  ]
+
+  return `terraform {
+  required_providers {
+    fmc = {
+      source  = "CiscoDevNet/fmc"
+      version = "~> 2.0"
+    }
+  }
+}
+
+# Credentials: set FMC_USERNAME and FMC_PASSWORD in the environment.
+provider "fmc" {
+  url = "https://<fmc-host>"
+}
+
+${data.join('\n')}${data.length ? '\n' : ''}resource "fmc_access_control_policy" "${ident(slug(policyName))}" {
+  name           = ${q(policyName)}
+  default_action = "BLOCK"
+
+  # With manage_rules = true this resource owns the whole rule list; rules not listed here are removed.
+  manage_rules = true
+  rules = [
+${body.join(',\n')}
+  ]
+}
+`
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
   { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
@@ -411,5 +503,6 @@ export const TARGETS: Target[] = [
   { id: 'iptables', label: 'iptables', hint: 'Linux (legacy)', filename: 'iptables.sh', generate: iptables },
   { id: 'firewalld', label: 'firewalld', hint: 'RHEL / Fedora', filename: 'firewalld.sh', generate: firewalld },
   { id: 'cisco', label: 'Cisco ACL', hint: 'IOS extended', filename: 'acl.ios', generate: cisco },
+  { id: 'fmc', label: 'Cisco FMC', hint: 'Terraform (fmc 2.x)', filename: 'fmc.tf', generate: fmc },
   { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos 2.x)', filename: 'panos.tf', generate: panos },
 ]

@@ -24,6 +24,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | 🌐 | Cisco ACL | IOS extended access lists |
 | 🐧 | nftables | `nft -f` ruleset (`table inet`) |
 | 🐧 | iptables (legacy) | `iptables -A` commands |
+| 🛡️ | Cisco FMC (Firepower) | Terraform (`CiscoDevNet/fmc` 2.x: `fmc_access_control_policy`) |
 | 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`, `panos_service`) |
 
 ## ✨ Features

@@ -16,8 +16,8 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
   zone: { label: 'Zone', width: '96px', title: 'firewalld zone (blank = public)' },
   scope: { label: 'Applied to', width: 'minmax(120px, 1fr)', title: 'NSX group path the policy applies to' },
   notes: { label: 'Notes', width: 'minmax(120px, 1fr)' },
-  srcZone: { label: 'From zone', width: '100px', title: 'Palo Alto source zone (blank = any)' },
-  dstZone: { label: 'To zone', width: '100px', title: 'Palo Alto destination zone (blank = any)' },
+  srcZone: { label: 'From zone', width: '100px', title: 'Source zone (Palo Alto / Cisco FMC); blank = any' },
+  dstZone: { label: 'To zone', width: '100px', title: 'Destination zone (Palo Alto / Cisco FMC); blank = any' },
 }
 
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
@@ -30,6 +30,7 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   cisco: ['logging'],
   nftables: ['logging'],
   iptables: ['logging'],
+  fmc: ['srcZone', 'dstZone', 'logging', 'notes'],
   panos: ['srcZone', 'dstZone', 'logging', 'notes'],
 }
 
