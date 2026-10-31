@@ -263,7 +263,7 @@ const panos = (rules: Rule[], { policyName }: Options) => {
     return p.length ? p : ['any']
   }
   const zones = (v: string) => (v.trim() ? v.split(/\s*,\s*/) : ['any'])
-  const svcs = new Map<string, { name: string; proto: string; port: string }>()
+  const svcs = new Map<string, { proto: string; port: string }>()
   const svcRefs = (r: Rule): string[] => {
     if (r.protocol === 'ICMP') return ['any'] // ICMP is matched through applications
     const ports = splitPorts(r)
@@ -271,45 +271,61 @@ const panos = (rules: Rule[], { policyName }: Options) => {
     return ports.map((p) => {
       const proto = r.protocol === 'ANY' ? 'tcp' : r.protocol.toLowerCase()
       const name = `${proto}-${p}`
-      svcs.set(name, { name, proto, port: p })
+      svcs.set(name, { proto, port: p })
       return name
     })
   }
   const apps = (r: Rule) => (r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])
+  const location = '  location = {\n    vsys = {\n      name = "vsys1"\n    }\n  }\n'
 
   const body = active(rules).map((r) => {
-    const lines = [
-      `    name                  = "${r.name}"`,
-      `    source_zones          = ${list(zones(r.srcZone))}`,
-      `    source_addresses      = ${list(addr(r.source))}`,
-      '    source_users          = ["any"]',
-      `    destination_zones     = ${list(zones(r.dstZone))}`,
-      `    destination_addresses = ${list(addr(r.destination))}`,
-      `    applications          = ${list(apps(r))}`,
-      `    services              = [${svcRefs(r).map((n) => (svcs.has(n) ? `panos_service_object.${n}.name` : `"${n}"`)).join(', ')}]`,
-      '    categories            = ["any"]',
-      `    action                = "${{ ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]}"`,
-      `    log_end               = ${r.logging}`,
-    ]
-    if (r.notes.trim()) lines.push(`    description           = "${r.notes.trim()}"`)
+    const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
     const bad = [...addr(r.source), ...addr(r.destination)].filter((x) => x !== 'any' && !isIp(x))
-    const note = bad.length ? `    # TODO: ${bad.map((b) => `"${b}"`).join(', ')} must exist as panos_address_object / address group\n` : ''
-    return `\n  rule {\n${note}${lines.join('\n')}\n  }`
+    const lines = [
+      ...(bad.length ? [`      # TODO: ${bad.map((b) => `"${b}"`).join(', ')} must exist as a panos_address / panos_address_group`] : []),
+      `      name                  = "${r.name}"`,
+      `      source_zones          = ${list(zones(r.srcZone))}`,
+      `      source_addresses      = ${list(addr(r.source))}`,
+      `      destination_zones     = ${list(zones(r.dstZone))}`,
+      `      destination_addresses = ${list(addr(r.destination))}`,
+      `      applications          = ${list(apps(r))}`,
+      `      services              = [${svcRefs(r).map((n) => (svcs.has(n) ? `panos_service.${n}.name` : `"${n}"`)).join(', ')}]`,
+      `      action                = "${act}"`,
+      `      log_end               = ${r.logging}`,
+    ]
+    if (r.notes.trim()) lines.push(`      description           = "${r.notes.trim()}"`)
+    return `    {\n${lines.join('\n')}\n    },`
   })
 
-  const objs = [...svcs.values()].map(
-    (s) => `resource "panos_service_object" "${s.name}" {
-  name             = "${s.name}"
-  protocol         = "${s.proto}"
-  destination_port = "${s.port}"
+  const objs = [...svcs.entries()].map(
+    ([name, s]) => `resource "panos_service" "${name}" {
+${location}
+  name = "${name}"
+
+  protocol = {
+    ${s.proto} = {
+      destination_port = "${s.port}"
+    }
+  }
 }
 `,
   )
-  const dep = ''
-  return `${objs.join('\n')}${objs.length ? '\n' : ''}resource "panos_security_rule_group" "${slug(policyName).replace(/-/g, '_')}" {
-  position_keyword = "bottom"
+  return `terraform {
+  required_providers {
+    panos = {
+      source  = "PaloAltoNetworks/panos"
+      version = "~> 2.0"
+    }
+  }
+}
+
+${objs.join('\n')}${objs.length ? '\n' : ''}# Manages the entire rulebase at this location; rules outside this list are removed.
+resource "panos_security_policy" "${slug(policyName).replace(/-/g, '_')}" {
+${location}
+  rules = [
 ${body.join('\n')}
-${dep}}
+  ]
+}
 `
 }
 
@@ -321,5 +337,5 @@ export const TARGETS: Target[] = [
   { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'firewalld', label: 'firewalld', hint: 'RHEL / Fedora', filename: 'firewalld.sh', generate: firewalld },
   { id: 'cisco', label: 'Cisco ACL', hint: 'IOS extended', filename: 'acl.ios', generate: cisco },
-  { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos)', filename: 'panos.tf', generate: panos },
+  { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos 2.x)', filename: 'panos.tf', generate: panos },
 ]
