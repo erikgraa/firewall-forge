@@ -57,6 +57,7 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [ ] 😈 FreeBSD ipfw output
 - [ ] 🐡 pf output (FreeBSD / OpenBSD / OPNsense / pfSense)
 - [ ] ☁️ AWS security groups and Azure NSGs (Terraform)
+- [ ] 🔥☁️ Azure Firewall policy rule collections: Terraform (`azurerm_firewall_policy_rule_collection_group`) and Bicep (`Microsoft.Network/firewallPolicies/ruleCollectionGroups`)
 - [ ] ☸️ Kubernetes NetworkPolicy / Cilium
 - [x] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)
 - [ ] 🔄 Reverse import from `iptables-save`, `nft list ruleset` and NSX JSON
