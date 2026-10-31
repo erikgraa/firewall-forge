@@ -6,7 +6,7 @@ import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
 
-const opts = { policyName: 'generated', permanent: true }
+const opts = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
 
@@ -54,16 +54,26 @@ describe('generators (behaviour)', () => {
     expect(out('windows', [rule({ direction: 'Outbound' })])).toContain('-RemotePort')
   })
 
-  it('firewalld honours the permanent switch', () => {
-    const rules = [rule({ source: '10.0.0.0/8', destination: '10.1.1.1' })]
-    const perm = out('firewalld', rules)
-    const run = out('firewalld', rules, { ...opts, permanent: false })
-    expect(perm).toContain('--permanent')
-    expect(perm).toContain('firewall-cmd --reload')
-    expect(run).not.toMatch(/--permanent --zone/)
-    expect(run).toContain('--runtime-to-permanent')
+  it('firewalld honours per-rule permanence and orders the reload before runtime rules', () => {
+    const text = out('firewalld', [
+      rule({ name: 'keep', source: '10.0.0.0/8', destination: '10.1.1.1' }),
+      rule({ name: 'temp', source: '10.0.0.0/8', destination: '10.1.1.2', permanent: false }),
+    ])
+    const keep = text.indexOf("--permanent --zone=public --add-rich-rule='rule priority=\"10\"")
+    const reload = text.indexOf('firewall-cmd --reload')
+    const temp = text.indexOf("firewall-cmd --zone=public --add-rich-rule='rule priority=\"20\"")
+    expect(keep).toBeGreaterThanOrEqual(0)
+    expect(reload).toBeGreaterThan(keep)
+    expect(temp).toBeGreaterThan(reload)
+    expect(text).toContain('# temp (runtime only)')
+    expect(text).toContain('--runtime-to-permanent')
   })
 
+  it('firewalld with only runtime rules has no reload', () => {
+    const text = out('firewalld', [rule({ source: '10.0.0.0/8', destination: '10.1.1.2', permanent: false })])
+    expect(text).not.toContain('--reload')
+    expect(text).not.toMatch(/--permanent/)
+  })
   it('nftables and iptables route by direction', () => {
     const rules = [rule({ name: 'in', direction: 'Inbound' }), rule({ name: 'out', direction: 'Outbound' })]
     expect(out('iptables', rules)).toMatch(/-A INPUT[^\n]*"in"/)
@@ -96,9 +106,6 @@ describe('generators (behaviour)', () => {
     expect(text).toContain('panos_service.tcp-443.name')
   })
 
-  it('sdn json is valid JSON', () => {
-    expect(() => JSON.parse(out('sdn-json'))).not.toThrow()
-  })
 })
 
 describe('validate', () => {
@@ -146,13 +153,12 @@ describe('csv import', () => {
 describe('share links', () => {
   it('round-trips state and keeps links short', async () => {
     const rules = sampleRules()
-    const fragment = await encodeState({ rules, target: 'cisco', policyName: 'demo', permanent: false })
+    const fragment = await encodeState({ rules, target: 'cisco', policyName: 'demo' })
     expect(fragment.startsWith('s=1.')).toBe(true)
     expect(fragment.length).toBeLessThan(600)
     const back = await decodeState(`#${fragment}`)
     expect(back?.target).toBe('cisco')
     expect(back?.policyName).toBe('demo')
-    expect(back?.permanent).toBe(false)
     expect(back?.rules.map(({ id: _id, ...r }) => r)).toEqual(rules.map(({ id: _id, ...r }) => r))
   })
 

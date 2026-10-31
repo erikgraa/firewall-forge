@@ -63,7 +63,6 @@ const targetWarnings = (rules: Rule[], target: TargetId): Issue[] => {
     windows: 'Block',
     cisco: 'deny',
     'sdn-ps': 'Deny',
-    'sdn-json': 'Deny',
     'azl-nsg': 'Deny',
   }
   if (denyWord[target] && rejects.length)
@@ -87,7 +86,7 @@ const targetWarnings = (rules: Rule[], target: TargetId): Issue[] => {
   if (['fmc', 'panos'].includes(target) && rules.some((r) => r.direction === 'Outbound'))
     out.push(warn('Direction is not used on this target (stateful, zone-based) — set the From/To zones instead.'))
 
-  if (['sdn-ps', 'sdn-json', 'azl-nsg'].includes(target)) {
+  if (['sdn-ps', 'azl-nsg'].includes(target)) {
     const p = rules.map((r) => Number(r.priority)).filter(Boolean)
     if (new Set(p).size !== p.length) out.push(warn('Two rules share the same explicit priority; priorities must be unique.'))
   }

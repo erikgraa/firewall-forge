@@ -17,7 +17,6 @@ interface Saved {
   rules: Rule[]
   target: TargetId
   policyName: string
-  permanent?: boolean
 }
 
 const BASE_COLS = '44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
@@ -40,7 +39,6 @@ export default function App() {
   const [rules, setRules] = useState<Rule[]>(initial.rules)
   const [target, setTarget] = useState<TargetId>(initial.target)
   const [policyName, setPolicyName] = useState(initial.policyName)
-  const [permanent, setPermanent] = useState(initial.permanent ?? true)
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
   const [copied, setCopied] = useState(false)
@@ -58,14 +56,13 @@ export default function App() {
       setRules(state.rules)
       setTarget(TARGETS.some((t) => t.id === state.target) ? state.target : 'nsx')
       setPolicyName(state.policyName)
-      setPermanent(state.permanent)
       setShared('Shared rules loaded.')
     })
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, permanent }))
-  }, [rules, target, policyName, permanent])
+    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName }))
+  }, [rules, target, policyName])
 
   const current = TARGETS.find((t) => t.id === target)!
   const extras = EXTRA_COLUMNS[target]
@@ -73,7 +70,7 @@ export default function App() {
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
   const issues = useMemo(() => validate(rules, target), [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
-  const code = useMemo(() => current.generate(rules, { policyName, permanent }), [current, rules, policyName, permanent])
+  const code = useMemo(() => current.generate(rules, { policyName }), [current, rules, policyName])
   const html = useMemo(() => highlight(code), [code])
 
   const patch = (id: string, change: Partial<Rule>) =>
@@ -100,7 +97,7 @@ export default function App() {
     setTimeout(() => setCopied(false), 1400)
   }
   const share = async () => {
-    const url = await shareUrl({ rules, target, policyName, permanent })
+    const url = await shareUrl({ rules, target, policyName })
     await navigator.clipboard.writeText(url)
     setShared(url.length > 2000 ? `Link copied (${url.length} chars — very long, some apps may truncate it).` : 'Share link copied ✓')
     setTimeout(() => setShared(null), 3500)
@@ -132,6 +129,13 @@ export default function App() {
           <select value={r.profile} onChange={(e) => patch(r.id, { profile: e.target.value as Rule['profile'] })}>
             <option>Any</option><option>Domain</option><option>Private</option><option>Public</option>
           </select>
+        )
+      case 'permanent':
+        return (
+          <label className="switch" title={COLUMNS.permanent.title}>
+            <input type="checkbox" checked={r.permanent} onChange={(e) => patch(r.id, { permanent: e.target.checked })} />
+            <i />
+          </label>
         )
       case 'priority':
         return <input value={r.priority} placeholder="auto" onChange={(e) => patch(r.id, { priority: e.target.value })} />
@@ -247,15 +251,6 @@ export default function App() {
               Policy / ACL name
               <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} />
             </label>
-            {target === 'firewalld' && (
-              <label className="inline-switch" title="Permanent rules survive a reload and reboot; runtime-only rules do not">
-                <span className="switch">
-                  <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
-                  <i />
-                </span>
-                {permanent ? 'Permanent' : 'Runtime only'}
-              </label>
-            )}
             <div className="actions">
               <button className="ghost" onClick={share}>Share link</button>
               <button className="ghost" onClick={download}>Download {current.filename}</button>

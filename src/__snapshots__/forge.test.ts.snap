@@ -266,59 +266,6 @@ resource "panos_security_policy" "generated" {
 "
 `;
 
-exports[`generators (snapshots) > sdn-json output is stable 1`] = `
-"{
-  "resourceId": "generated",
-  "properties": {
-    "aclRules": [
-      {
-        "resourceId": "web-in",
-        "properties": {
-          "protocol": "TCP",
-          "sourcePortRange": "0-65535",
-          "destinationPortRange": "443",
-          "sourceAddressPrefix": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
-          "destinationAddressPrefix": "10.10.10.0/24",
-          "action": "Allow",
-          "type": "Inbound",
-          "priority": 110,
-          "logging": "Disabled"
-        }
-      },
-      {
-        "resourceId": "dns-out",
-        "properties": {
-          "protocol": "UDP",
-          "sourcePortRange": "0-65535",
-          "destinationPortRange": "53",
-          "sourceAddressPrefix": "*",
-          "destinationAddressPrefix": "1.1.1.1,8.8.8.8",
-          "action": "Allow",
-          "type": "Outbound",
-          "priority": 120,
-          "logging": "Disabled"
-        }
-      },
-      {
-        "resourceId": "deny-rest",
-        "properties": {
-          "protocol": "All",
-          "sourcePortRange": "0-65535",
-          "destinationPortRange": "0-65535",
-          "sourceAddressPrefix": "*",
-          "destinationAddressPrefix": "*",
-          "action": "Deny",
-          "type": "Inbound",
-          "priority": 130,
-          "logging": "Disabled"
-        }
-      }
-    ]
-  }
-}
-"
-`;
-
 exports[`generators (snapshots) > sdn-ps output is stable 1`] = `
 "$uri = "https://<network-controller-fqdn>"
 

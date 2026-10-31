@@ -17,7 +17,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | | Target | Output |
 | --- | --- | --- |
 | ☁️ | NSX DFW | Terraform (`vmware/nsxt`) |
-| 🪟 | Windows Server SDN ACL | PowerShell and Network Controller REST JSON |
+| 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies |
@@ -31,7 +31,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 - 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
-- 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld can emit permanent or runtime-only rules
+- 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
 - 📥 CSV / spreadsheet import, 📋 copy and 💾 download of the generated output
 - 🗂️ Rules are saved in your browser's local storage
