@@ -11,7 +11,6 @@ export interface Target {
 
 export interface Options {
   policyName: string
-  permanent: boolean
 }
 
 const prefixes = (value: string, key: 'nsx' | 'net'): string[] => {
@@ -86,31 +85,6 @@ New-NetworkControllerAccessControlList -ResourceId "${slug(policyName)}" -Proper
 `
 }
 
-const sdnJson = (rules: Rule[], { policyName }: Options) =>
-  JSON.stringify(
-    {
-      resourceId: slug(policyName),
-      properties: {
-        aclRules: active(rules).map((r, i) => ({
-          resourceId: r.name,
-          properties: {
-            protocol: ncProtocol(r),
-            sourcePortRange: '0-65535',
-            destinationPortRange: portRange(r),
-            sourceAddressPrefix: prefixes(r.source, 'net').join(','),
-            destinationAddressPrefix: prefixes(r.destination, 'net').join(','),
-            action: aclAction(r),
-            type: r.direction,
-            priority: prio(r, i),
-            logging: r.logging ? 'Enabled' : 'Disabled',
-          },
-        })),
-      },
-    },
-    null,
-    2,
-  ) + '\n'
-
 const azl = (rules: Rule[], { policyName }: Options) => {
   const quote = (a: string[]) => a.map((x) => `'${x}'`).join(' ')
   const lines = [
@@ -161,28 +135,28 @@ const windows = (rules: Rule[], { policyName }: Options) => {
   return lines.join('\n') + '\n'
 }
 
-const firewalld = (rules: Rule[], { policyName, permanent }: Options) => {
+const firewalld = (rules: Rule[], { policyName }: Options) => {
   const act = (r: Rule) => ({ ALLOW: 'accept', DROP: 'drop', REJECT: 'reject' })[r.action]
-  const hasOut = active(rules).some((r) => r.direction === 'Outbound')
-  const lines: string[] = []
+  const live = active(rules)
+  const hasOut = live.some((r) => r.direction === 'Outbound')
+  const setup: string[] = []
   if (hasOut) {
-    lines.push(
+    setup.push(
       '# firewalld zones only filter inbound traffic; outbound rules use a policy (HOST -> ANY)',
       `firewall-cmd --permanent --new-policy ${slug(policyName)}-out`,
       `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-ingress-zone HOST`,
       `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-egress-zone ANY`,
-      ...(permanent ? [] : ['# Policies can only be created permanently; reload to activate before adding runtime rules', 'firewall-cmd --reload']),
-      '',
     )
   }
-  active(rules).forEach((r, i) => {
+
+  const emit = (r: Rule, i: number): string[] => {
     const src = prefixes(r.source, 'nsx')
     const dst = prefixes(r.destination, 'nsx')
     const bad = [...src, ...dst].find((x) => !isIp(x))
-    lines.push(`# ${r.name}`)
+    const lines = [`# ${r.name}${r.permanent ? '' : ' (runtime only)'}`]
     if (bad) {
       lines.push(`# TODO: "${bad}" is not an IP/CIDR — use an ipset (source ipset="...") instead`)
-      return
+      return lines
     }
     const proto = { TCP: 'tcp', UDP: 'udp', ICMP: 'icmp', ANY: '' }[r.protocol]
     const ports = splitPorts(r)
@@ -198,13 +172,24 @@ const firewalld = (rules: Rule[], { policyName, permanent }: Options) => {
           else if (proto) rule.push(`protocol value="${proto}"`)
           if (r.logging) rule.push(`log prefix="${r.name}: " level="info"`)
           rule.push(act(r))
-          lines.push(`firewall-cmd${permanent ? ' --permanent' : ''} ${target} --add-rich-rule='${rule.join(' ')}'`)
+          lines.push(`firewall-cmd${r.permanent ? ' --permanent' : ''} ${target} --add-rich-rule='${rule.join(' ')}'`)
         }
       }
     }
-  })
-  if (permanent) lines.push('', 'firewall-cmd --reload')
-  else lines.push('', '# Runtime only: these rules are lost on reload or reboot. Persist them with:', '# firewall-cmd --runtime-to-permanent')
+    return lines
+  }
+
+  // A reload drops runtime-only rules, so permanent rules go first, then the reload, then runtime rules.
+  const perm = live.map((r, i) => ({ r, i })).filter((x) => x.r.permanent)
+  const runtime = live.map((r, i) => ({ r, i })).filter((x) => !x.r.permanent)
+  const lines: string[] = [...setup]
+  if (setup.length) lines.push('')
+  for (const { r, i } of perm) lines.push(...emit(r, i))
+  if (perm.length || setup.length) lines.push('', 'firewall-cmd --reload')
+  if (runtime.length) {
+    lines.push('', '# Runtime-only rules: lost on reload or reboot. Persist them with firewall-cmd --runtime-to-permanent', '')
+    for (const { r, i } of runtime) lines.push(...emit(r, i))
+  }
   return lines.join('\n') + '\n'
 }
 
@@ -496,7 +481,6 @@ ${body.join(',\n')}
 export const TARGETS: Target[] = [
   { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
   { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
-  { id: 'sdn-json', label: 'SDN ACL', hint: 'REST JSON', filename: 'sdn-acl.json', generate: sdnJson },
   { id: 'azl-nsg', label: 'Azure Local NSG', hint: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
   { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'nftables', label: 'nftables', hint: 'Linux', filename: 'rules.nft', generate: nftables },

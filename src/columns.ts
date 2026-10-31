@@ -1,6 +1,6 @@
 import type { Rule, TargetId } from './model'
 
-export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes' | 'srcZone' | 'dstZone'
+export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes' | 'srcZone' | 'dstZone' | 'permanent'
 
 export interface ColMeta {
   label: string
@@ -13,6 +13,7 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
   priority: { label: 'Priority', width: '84px', title: 'Explicit priority (blank = auto, in list order)' },
   profile: { label: 'Profile', width: '96px', title: 'Windows firewall profile' },
   program: { label: 'Program', width: 'minmax(120px, 1fr)', title: 'Optional executable path' },
+  permanent: { label: 'Permanent', width: '84px', title: 'Permanent rules survive a reload; unticked = runtime only' },
   zone: { label: 'Zone', width: '96px', title: 'firewalld zone (blank = public)' },
   scope: { label: 'Applied to', width: 'minmax(120px, 1fr)', title: 'NSX group path the policy applies to' },
   notes: { label: 'Notes', width: 'minmax(120px, 1fr)' },
@@ -23,10 +24,9 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   nsx: ['scope', 'logging', 'notes'],
   'sdn-ps': ['priority', 'logging'],
-  'sdn-json': ['priority', 'logging'],
   'azl-nsg': ['priority'],
   windows: ['profile', 'program'],
-  firewalld: ['zone', 'logging'],
+  firewalld: ['zone', 'permanent', 'logging'],
   cisco: ['logging'],
   nftables: ['logging'],
   iptables: ['logging'],
