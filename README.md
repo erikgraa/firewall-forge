@@ -64,7 +64,13 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
 - [x] 🧪 Unit tests for the generators
-- [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld and Cisco systems
+- [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
+- [ ] 🗺️ Mermaid diagrams generated from the rules: traffic flow, rule evaluation order (compact rectangles, not diamonds) and a zone view for Palo Alto / FMC; lazy-load Mermaid and offer Copy Mermaid / Download SVG
+- [ ] 🤖 Cisco FMC Ansible (`cisco.fmcansible`) once the module names are checked
+- [ ] 🏢 NSX project-scoped (multitenancy) variants of the PowerShell SDK output
+- [ ] 🔷 Azure Local Bicep: offer the newer `2026-07-01-preview` API version
+- [ ] 🔁 Make the firewalld Ansible policy tasks idempotent
+- [ ] 🔌 Attach generated ACLs to interfaces (Cisco `ios_acl_interfaces` / `iosxe_interface_ethernet`, NSX applied-to groups)
 
 ## ⚠️ Caveats
 
