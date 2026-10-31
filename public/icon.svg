@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2250"/>
+      <stop offset="1" stop-color="#090d1c"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2656"/>
+      <stop offset="1" stop-color="#0d1330"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde047"/>
+      <stop offset="0.5" stop-color="#fb923c"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <path d="M32 8 51 15.500v15c0 12.500-8 21-19 26-11-5-19-13.500-19-26v-15z"/>
+    </clipPath>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.200" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <path d="M32 8 51 15.500v15c0 12.500-8 21-19 26-11-5-19-13.500-19-26v-15z" fill="url(#fill)"/>
+  <g clip-path="url(#clip)" stroke="#818cf8" stroke-opacity=".38" stroke-width="1.300" fill="none">
+    <path d="M10 21h44M10 29h44M10 37h44M10 45h44M10 53h44"/>
+    <path d="M24 13v8M40 13v8M16 21v8M32 21v8M48 21v8M24 29v8M40 29v8M16 37v8M32 37v8M48 37v8M24 45v8M40 45v8"/>
+  </g>
+  <path d="M32 8 51 15.500v15c0 12.500-8 21-19 26-11-5-19-13.500-19-26v-15z" fill="none" stroke="url(#rim)" stroke-width="2.200" stroke-linejoin="round"/>
+  <g filter="url(#glow)">
+    <path d="M32 20c1.500 6 9 9 9 17a9 9 0 0 1-18 0c0-4.500 2.500-7 4.500-9 0 3.500 1.500 5 2.500 5 0-4.500-.5-8.500 2-13z" fill="url(#flame)"/>
+    <path d="M32 34c.8 3 4.500 4.500 4.500 8a4.500 4.500 0 0 1-9 0c0-2.200 1.500-3.500 2.500-4.500.2 1.800.8 2.500 1.500 2.500 0-2.200-.2-3.800.5-6z" fill="#fff7c2" opacity=".92"/>
+  </g>
+</svg>
