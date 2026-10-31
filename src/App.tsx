@@ -121,7 +121,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <img src="/icon.svg" alt="" className="logo" />
+        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="logo" />
         <div>
           <h1>Firewall rule forge</h1>
           <p>One rule model → NSX, Windows SDN, Azure Local, Windows Firewall, firewalld and Cisco. Runs entirely in your browser.</p>
