@@ -113,6 +113,10 @@ export default function App() {
         return <input value={r.zone} placeholder="public" onChange={(e) => patch(r.id, { zone: e.target.value })} />
       case 'scope':
         return <input value={r.scope} placeholder="/infra/domains/default/groups/…" onChange={(e) => patch(r.id, { scope: e.target.value })} />
+      case 'srcZone':
+        return <input value={r.srcZone} placeholder="any" onChange={(e) => patch(r.id, { srcZone: e.target.value })} />
+      case 'dstZone':
+        return <input value={r.dstZone} placeholder="any" onChange={(e) => patch(r.id, { dstZone: e.target.value })} />
       case 'notes':
         return <input value={r.notes} placeholder="notes" onChange={(e) => patch(r.id, { notes: e.target.value })} />
     }

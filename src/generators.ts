@@ -256,6 +256,63 @@ const cisco = (rules: Rule[], { policyName }: Options) => {
   return out.join('\n') + '\n'
 }
 
+const panos = (rules: Rule[], { policyName }: Options) => {
+  const list = (a: string[]) => `[${a.map((x) => `"${x}"`).join(', ')}]`
+  const addr = (v: string) => {
+    const p = prefixes(v, 'nsx')
+    return p.length ? p : ['any']
+  }
+  const zones = (v: string) => (v.trim() ? v.split(/\s*,\s*/) : ['any'])
+  const svcs = new Map<string, { name: string; proto: string; port: string }>()
+  const svcRefs = (r: Rule): string[] => {
+    if (r.protocol === 'ICMP') return ['any'] // ICMP is matched through applications
+    const ports = splitPorts(r)
+    if (!ports.length) return ['any']
+    return ports.map((p) => {
+      const proto = r.protocol === 'ANY' ? 'tcp' : r.protocol.toLowerCase()
+      const name = `${proto}-${p}`
+      svcs.set(name, { name, proto, port: p })
+      return name
+    })
+  }
+  const apps = (r: Rule) => (r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])
+
+  const body = active(rules).map((r) => {
+    const lines = [
+      `    name                  = "${r.name}"`,
+      `    source_zones          = ${list(zones(r.srcZone))}`,
+      `    source_addresses      = ${list(addr(r.source))}`,
+      '    source_users          = ["any"]',
+      `    destination_zones     = ${list(zones(r.dstZone))}`,
+      `    destination_addresses = ${list(addr(r.destination))}`,
+      `    applications          = ${list(apps(r))}`,
+      `    services              = [${svcRefs(r).map((n) => (svcs.has(n) ? `panos_service_object.${n}.name` : `"${n}"`)).join(', ')}]`,
+      '    categories            = ["any"]',
+      `    action                = "${{ ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]}"`,
+      `    log_end               = ${r.logging}`,
+    ]
+    if (r.notes.trim()) lines.push(`    description           = "${r.notes.trim()}"`)
+    const bad = [...addr(r.source), ...addr(r.destination)].filter((x) => x !== 'any' && !isIp(x))
+    const note = bad.length ? `    # TODO: ${bad.map((b) => `"${b}"`).join(', ')} must exist as panos_address_object / address group\n` : ''
+    return `\n  rule {\n${note}${lines.join('\n')}\n  }`
+  })
+
+  const objs = [...svcs.values()].map(
+    (s) => `resource "panos_service_object" "${s.name}" {
+  name             = "${s.name}"
+  protocol         = "${s.proto}"
+  destination_port = "${s.port}"
+}
+`,
+  )
+  const dep = ''
+  return `${objs.join('\n')}${objs.length ? '\n' : ''}resource "panos_security_rule_group" "${slug(policyName).replace(/-/g, '_')}" {
+  position_keyword = "bottom"
+${body.join('\n')}
+${dep}}
+`
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
   { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
@@ -264,4 +321,5 @@ export const TARGETS: Target[] = [
   { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'firewalld', label: 'firewalld', hint: 'RHEL / Fedora', filename: 'firewalld.sh', generate: firewalld },
   { id: 'cisco', label: 'Cisco ACL', hint: 'IOS extended', filename: 'acl.ios', generate: cisco },
+  { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos)', filename: 'panos.tf', generate: panos },
 ]

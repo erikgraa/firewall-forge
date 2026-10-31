@@ -1,6 +1,6 @@
 import type { Rule, TargetId } from './model'
 
-export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes'
+export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes' | 'srcZone' | 'dstZone'
 
 export interface ColMeta {
   label: string
@@ -16,6 +16,8 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
   zone: { label: 'Zone', width: '96px', title: 'firewalld zone (blank = public)' },
   scope: { label: 'Applied to', width: 'minmax(120px, 1fr)', title: 'NSX group path the policy applies to' },
   notes: { label: 'Notes', width: 'minmax(120px, 1fr)' },
+  srcZone: { label: 'From zone', width: '100px', title: 'Palo Alto source zone (blank = any)' },
+  dstZone: { label: 'To zone', width: '100px', title: 'Palo Alto destination zone (blank = any)' },
 }
 
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
@@ -26,6 +28,7 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   windows: ['profile', 'program'],
   firewalld: ['zone', 'logging'],
   cisco: ['logging'],
+  panos: ['srcZone', 'dstZone', 'logging', 'notes'],
 }
 
 export const hasExtra = (rule: Rule, key: ColKey) => Boolean(rule[key])

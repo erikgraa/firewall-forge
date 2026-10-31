@@ -22,6 +22,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies |
 | 🌐 | Cisco ACL | IOS extended access lists |
+| 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos`) |
 
 ## ✨ Features
 

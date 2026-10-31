@@ -1,7 +1,7 @@
 export type Action = 'ALLOW' | 'DROP' | 'REJECT'
 export type Direction = 'Inbound' | 'Outbound'
 export type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'ANY'
-export type TargetId = 'nsx' | 'sdn-ps' | 'sdn-json' | 'azl-nsg' | 'firewalld' | 'windows' | 'cisco'
+export type TargetId = 'nsx' | 'sdn-ps' | 'sdn-json' | 'azl-nsg' | 'firewalld' | 'windows' | 'cisco' | 'panos'
 
 export interface Rule {
   id: string
@@ -21,6 +21,8 @@ export interface Rule {
   zone: string
   scope: string
   notes: string
+  srcZone: string
+  dstZone: string
 }
 
 export interface Endpoint {
@@ -84,6 +86,8 @@ export const blankRule = (): Rule => ({
   zone: '',
   scope: '',
   notes: '',
+  srcZone: '',
+  dstZone: '',
 })
 
 export const sampleRules = (): Rule[] => [
