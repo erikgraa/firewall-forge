@@ -795,6 +795,222 @@ ${body.join('\n')}
 `
 }
 
+type AclAddr = { any: true } | { host: string } | { net: string; wc: string }
+
+const aclAddr = (x: string): AclAddr => {
+  if (x === 'any') return { any: true }
+  const w = wildcard(x)
+  if (w.startsWith('host ')) return { host: w.slice(5) }
+  const [net, wc] = w.split(' ')
+  return { net, wc }
+}
+
+interface Ace {
+  rule: string
+  first: boolean
+  grant: 'permit' | 'deny'
+  proto: string
+  src: AclAddr
+  dst: AclAddr
+  eq?: string
+  range?: [string, string]
+  log: boolean
+}
+
+interface AclPlan {
+  name: string
+  direction: 'in' | 'out'
+  aces: Ace[]
+  todos: string[]
+}
+
+const ciscoPlan = (rules: Rule[], policyName: string): AclPlan[] => {
+  const plans: AclPlan[] = []
+  for (const dir of ['Inbound', 'Outbound'] as const) {
+    const subset = active(rules).filter((r) => r.direction === dir)
+    if (!subset.length) continue
+    const plan: AclPlan = { name: `${slug(policyName)}-${dir === 'Inbound' ? 'in' : 'out'}`, direction: dir === 'Inbound' ? 'in' : 'out', aces: [], todos: [] }
+    for (const r of subset) {
+      const src = prefixes(r.source, 'nsx')
+      const dst = prefixes(r.destination, 'nsx')
+      const bad = [...src, ...dst].find((x) => !isIp(x))
+      if (bad) {
+        plan.todos.push(`${r.name}: "${bad}" is not an IP/CIDR — use an object-group`)
+        continue
+      }
+      const proto = { TCP: 'tcp', UDP: 'udp', ICMP: 'icmp', ANY: 'ip' }[r.protocol]
+      const ports = splitPorts(r)
+      const specs: { eq?: string; range?: [string, string] }[] = ports.length
+        ? ports.map((p) => (p.includes('-') ? { range: p.split('-') as [string, string] } : { eq: p }))
+        : [{}]
+      let first = true
+      for (const s of src.length ? src : ['any']) {
+        for (const d of dst.length ? dst : ['any']) {
+          for (const spec of specs) {
+            plan.aces.push({ rule: r.name, first, grant: r.action === 'ALLOW' ? 'permit' : 'deny', proto, src: aclAddr(s), dst: aclAddr(d), ...spec, log: r.logging })
+            first = false
+          }
+        }
+      }
+    }
+    plans.push(plan)
+  }
+  return plans
+}
+
+const ciscoAnsible = (rules: Rule[], { policyName }: Options) => {
+  const addrYaml = (a: AclAddr, pad: string, port?: Ace): string[] => {
+    const lines = 'any' in a ? [`${pad}any: true`] : 'host' in a ? [`${pad}host: ${a.host}`] : [`${pad}address: ${a.net}`, `${pad}wildcard_bits: ${a.wc}`]
+    if (port?.eq) lines.push(`${pad}port_protocol:`, `${pad}  eq: ${yq(port.eq)}`)
+    if (port?.range) lines.push(`${pad}port_protocol:`, `${pad}  range:`, `${pad}    start: ${yq(port.range[0])}`, `${pad}    end: ${yq(port.range[1])}`)
+    return lines
+  }
+  const acls = ciscoPlan(rules, policyName).map((plan) => {
+    const lines: string[] = [`              - name: ${plan.name}`, '                acl_type: extended', '                aces:']
+    for (const t of plan.todos) lines.push(`                  # TODO: ${t}`)
+    for (const ace of plan.aces) {
+      if (ace.first) lines.push(`                  - remarks: [${yq(ace.rule)}]`)
+      lines.push(
+        `                  - grant: ${ace.grant}`,
+        `                    protocol: ${ace.proto}`,
+        '                    source:',
+        ...addrYaml(ace.src, '                      '),
+        '                    destination:',
+        ...addrYaml(ace.dst, '                      ', ace),
+      )
+      if (ace.log) lines.push('                    log:', '                      set: true')
+    }
+    return lines.join('\n')
+  })
+  return `---
+- name: ${yq(`${policyName} (Cisco IOS ACLs)`)}
+  hosts: all
+  gather_facts: false
+  connection: ansible.netcommon.network_cli
+  vars:
+    ansible_network_os: cisco.ios.ios
+  # Requires: ansible-galaxy collection install cisco.ios ansible.netcommon
+  tasks:
+    - name: Configure extended ACLs
+      cisco.ios.ios_acls:
+        state: replaced
+        config:
+          - afi: ipv4
+            acls:
+${acls.join('\n')}
+
+    # Attach with cisco.ios.ios_acl_interfaces, e.g. access_groups: [{ name: <acl>, direction: in }]
+`
+}
+
+const ciscoTerraform = (rules: Rule[], { policyName }: Options) => {
+  const addr = (prefix: 'source' | 'destination', a: AclAddr): string[] =>
+    'any' in a ? [`${prefix}_any = true`] : 'host' in a ? [`${prefix}_host = "${a.host}"`] : [`${prefix}_prefix = "${a.net}"`, `${prefix}_prefix_mask = "${a.wc}"`]
+  const resources = ciscoPlan(rules, policyName).map((plan) => {
+    let seq = 0
+    const entries: string[] = []
+    for (const ace of plan.aces) {
+      if (ace.first) {
+        seq += 10
+        entries.push(`    {\n      sequence = ${seq}\n      remark   = "${ace.rule}"\n    }`)
+      }
+      seq += 10
+      const lines = [`sequence = ${seq}`, `ace_rule_action = "${ace.grant}"`, `ace_rule_protocol = "${ace.proto}"`, ...addr('source', ace.src), ...addr('destination', ace.dst)]
+      if (ace.eq) lines.push(`destination_port_equal = "${ace.eq}"`)
+      if (ace.range) lines.push(`destination_port_range_from = "${ace.range[0]}"`, `destination_port_range_to = "${ace.range[1]}"`)
+      if (ace.log) lines.push('log = true')
+      entries.push(`    {\n${lines.map((l) => `      ${l}`).join('\n')}\n    }`)
+    }
+    const todo = plan.todos.map((t) => `# TODO: ${t}\n`).join('')
+    return `${todo}resource "iosxe_access_list_extended" "${plan.name.replace(/-/g, '_')}" {
+  name = "${plan.name}"
+  entries = [
+${entries.join(',\n')}
+  ]
+}
+
+# Attach with iosxe_interface_ethernet: ip_access_group_${plan.direction}_enable = true, ip_access_group_${plan.direction} = "${plan.name}"
+`
+  })
+  return `terraform {
+  required_providers {
+    iosxe = {
+      source  = "CiscoDevNet/iosxe"
+      version = "~> 1.0"
+    }
+  }
+}
+
+# IOS XE only (NETCONF/RESTCONF). Set credentials via IOSXE_USERNAME / IOSXE_PASSWORD.
+provider "iosxe" {
+  host = "<device-ip>"
+}
+
+${resources.join('\n')}`
+}
+
+const panosAnsible = (rules: Rule[], { policyName }: Options) => {
+  const list = (a: string[]) => `[${a.map(yq).join(', ')}]`
+  const addr = (v: string) => {
+    const p = prefixes(v, 'nsx')
+    return p.length ? p : ['any']
+  }
+  const zones = (v: string) => (v.trim() ? v.split(/\s*,\s*/) : ['any'])
+  const svcs = new Map<string, { proto: string; port: string }>()
+  const svcRefs = (r: Rule): string[] => {
+    if (r.protocol === 'ICMP') return ['any']
+    const ports = splitPorts(r)
+    if (!ports.length) return ['any']
+    return ports.map((p) => {
+      const proto = r.protocol === 'ANY' ? 'tcp' : r.protocol.toLowerCase()
+      const name = `${proto}-${p}`
+      svcs.set(name, { proto, port: p })
+      return name
+    })
+  }
+  const ruleTasks = active(rules).map((r) => {
+    const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
+    const lines = [
+      `    - name: ${yq(r.name)}`,
+      '      paloaltonetworks.panos.panos_security_rule:',
+      '        provider: "{{ provider }}"',
+      `        rule_name: ${yq(r.name)}`,
+      `        source_zone: ${list(zones(r.srcZone))}`,
+      `        source_ip: ${list(addr(r.source))}`,
+      `        destination_zone: ${list(zones(r.dstZone))}`,
+      `        destination_ip: ${list(addr(r.destination))}`,
+      `        application: ${list(r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])}`,
+      `        service: ${list(svcRefs(r))}`,
+      `        action: ${act}`,
+      `        log_end: ${r.logging}`,
+    ]
+    if (r.notes.trim()) lines.push(`        description: ${yq(r.notes.trim())}`)
+    return lines.join('\n')
+  })
+  const svcTasks = [...svcs.entries()].map(([name, s]) =>
+    [`    - name: ${yq(`Service ${name}`)}`, '      paloaltonetworks.panos.panos_service_object:', '        provider: "{{ provider }}"', `        name: ${yq(name)}`, `        protocol: ${s.proto}`, `        destination_port: ${yq(s.port)}`].join('\n'),
+  )
+  return `---
+- name: ${yq(`${policyName} (Palo Alto)`)}
+  hosts: all
+  connection: local
+  gather_facts: false
+  # Requires: ansible-galaxy collection install paloaltonetworks.panos  (and pip install pan-os-python)
+  vars:
+    provider:
+      ip_address: "{{ ansible_host }}"
+      username: "{{ panos_username }}"
+      password: "{{ panos_password }}"
+  tasks:
+${[...svcTasks, ...ruleTasks].join('\n\n')}
+
+    # Rules are created in order at the bottom of the rulebase; commit applies them.
+    - name: Commit
+      paloaltonetworks.panos.panos_commit_firewall:
+        provider: "{{ provider }}"
+`
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
   { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell', filename: 'nsx-policy.ps1', generate: nsxPs },
@@ -809,8 +1025,11 @@ export const TARGETS: Target[] = [
   { id: 'firewalld', platform: 'firewalld', label: 'firewalld', format: 'Shell', filename: 'firewalld.sh', generate: firewalld },
   { id: 'firewalld-ansible', platform: 'firewalld', label: 'firewalld', format: 'Ansible', filename: 'firewalld.yml', generate: firewalldAnsible },
   { id: 'cisco', platform: 'cisco', label: 'Cisco ACL', format: 'IOS', filename: 'acl.ios', generate: cisco },
+  { id: 'cisco-ansible', platform: 'cisco', label: 'Cisco ACL', format: 'Ansible', filename: 'cisco-acl.yml', generate: ciscoAnsible },
+  { id: 'cisco-tf', platform: 'cisco', label: 'Cisco ACL', format: 'Terraform (IOS XE)', filename: 'cisco-acl.tf', generate: ciscoTerraform },
   { id: 'fmc', platform: 'fmc', label: 'Cisco FMC', format: 'Terraform', filename: 'fmc.tf', generate: fmc },
   { id: 'panos', platform: 'panos', label: 'Palo Alto', format: 'Terraform 2.x', filename: 'panos.tf', generate: panos },
+  { id: 'panos-ansible', platform: 'panos', label: 'Palo Alto', format: 'Ansible', filename: 'panos.yml', generate: panosAnsible },
   { id: 'panos-1x', platform: 'panos', label: 'Palo Alto', format: 'Terraform 1.x', filename: 'panos-1x.tf', generate: panos1 },
 ]
 

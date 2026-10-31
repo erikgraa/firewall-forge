@@ -108,6 +108,186 @@ ip access-list extended generated-out
 "
 `;
 
+exports[`generators (snapshots) > cisco-ansible output is stable 1`] = `
+"---
+- name: 'generated (Cisco IOS ACLs)'
+  hosts: all
+  gather_facts: false
+  connection: ansible.netcommon.network_cli
+  vars:
+    ansible_network_os: cisco.ios.ios
+  # Requires: ansible-galaxy collection install cisco.ios ansible.netcommon
+  tasks:
+    - name: Configure extended ACLs
+      cisco.ios.ios_acls:
+        state: replaced
+        config:
+          - afi: ipv4
+            acls:
+              - name: generated-in
+                acl_type: extended
+                aces:
+                  - remarks: ['web-in']
+                  - grant: permit
+                    protocol: tcp
+                    source:
+                      address: 10.0.0.0
+                      wildcard_bits: 0.255.255.255
+                    destination:
+                      address: 10.10.10.0
+                      wildcard_bits: 0.0.0.255
+                      port_protocol:
+                        eq: '443'
+                  - grant: permit
+                    protocol: tcp
+                    source:
+                      address: 172.16.0.0
+                      wildcard_bits: 0.15.255.255
+                    destination:
+                      address: 10.10.10.0
+                      wildcard_bits: 0.0.0.255
+                      port_protocol:
+                        eq: '443'
+                  - grant: permit
+                    protocol: tcp
+                    source:
+                      address: 192.168.0.0
+                      wildcard_bits: 0.0.255.255
+                    destination:
+                      address: 10.10.10.0
+                      wildcard_bits: 0.0.0.255
+                      port_protocol:
+                        eq: '443'
+                  - remarks: ['deny-rest']
+                  - grant: deny
+                    protocol: ip
+                    source:
+                      any: true
+                    destination:
+                      any: true
+              - name: generated-out
+                acl_type: extended
+                aces:
+                  - remarks: ['dns-out']
+                  - grant: permit
+                    protocol: udp
+                    source:
+                      any: true
+                    destination:
+                      host: 1.1.1.1
+                      port_protocol:
+                        eq: '53'
+                  - grant: permit
+                    protocol: udp
+                    source:
+                      any: true
+                    destination:
+                      host: 8.8.8.8
+                      port_protocol:
+                        eq: '53'
+
+    # Attach with cisco.ios.ios_acl_interfaces, e.g. access_groups: [{ name: <acl>, direction: in }]
+"
+`;
+
+exports[`generators (snapshots) > cisco-tf output is stable 1`] = `
+"terraform {
+  required_providers {
+    iosxe = {
+      source  = "CiscoDevNet/iosxe"
+      version = "~> 1.0"
+    }
+  }
+}
+
+# IOS XE only (NETCONF/RESTCONF). Set credentials via IOSXE_USERNAME / IOSXE_PASSWORD.
+provider "iosxe" {
+  host = "<device-ip>"
+}
+
+resource "iosxe_access_list_extended" "generated_in" {
+  name = "generated-in"
+  entries = [
+    {
+      sequence = 10
+      remark   = "web-in"
+    },
+    {
+      sequence = 20
+      ace_rule_action = "permit"
+      ace_rule_protocol = "tcp"
+      source_prefix = "10.0.0.0"
+      source_prefix_mask = "0.255.255.255"
+      destination_prefix = "10.10.10.0"
+      destination_prefix_mask = "0.0.0.255"
+      destination_port_equal = "443"
+    },
+    {
+      sequence = 30
+      ace_rule_action = "permit"
+      ace_rule_protocol = "tcp"
+      source_prefix = "172.16.0.0"
+      source_prefix_mask = "0.15.255.255"
+      destination_prefix = "10.10.10.0"
+      destination_prefix_mask = "0.0.0.255"
+      destination_port_equal = "443"
+    },
+    {
+      sequence = 40
+      ace_rule_action = "permit"
+      ace_rule_protocol = "tcp"
+      source_prefix = "192.168.0.0"
+      source_prefix_mask = "0.0.255.255"
+      destination_prefix = "10.10.10.0"
+      destination_prefix_mask = "0.0.0.255"
+      destination_port_equal = "443"
+    },
+    {
+      sequence = 50
+      remark   = "deny-rest"
+    },
+    {
+      sequence = 60
+      ace_rule_action = "deny"
+      ace_rule_protocol = "ip"
+      source_any = true
+      destination_any = true
+    }
+  ]
+}
+
+# Attach with iosxe_interface_ethernet: ip_access_group_in_enable = true, ip_access_group_in = "generated-in"
+
+resource "iosxe_access_list_extended" "generated_out" {
+  name = "generated-out"
+  entries = [
+    {
+      sequence = 10
+      remark   = "dns-out"
+    },
+    {
+      sequence = 20
+      ace_rule_action = "permit"
+      ace_rule_protocol = "udp"
+      source_any = true
+      destination_host = "1.1.1.1"
+      destination_port_equal = "53"
+    },
+    {
+      sequence = 30
+      ace_rule_action = "permit"
+      ace_rule_protocol = "udp"
+      source_any = true
+      destination_host = "8.8.8.8"
+      destination_port_equal = "53"
+    }
+  ]
+}
+
+# Attach with iosxe_interface_ethernet: ip_access_group_out_enable = true, ip_access_group_out = "generated-out"
+"
+`;
+
 exports[`generators (snapshots) > firewalld output is stable 1`] = `
 "# firewalld zones only filter inbound traffic; outbound rules use a policy (HOST -> ANY)
 firewall-cmd --permanent --new-policy generated-out
@@ -639,6 +819,79 @@ resource "panos_security_rule_group" "generated" {
     log_end               = false
   }
 }
+"
+`;
+
+exports[`generators (snapshots) > panos-ansible output is stable 1`] = `
+"---
+- name: 'generated (Palo Alto)'
+  hosts: all
+  connection: local
+  gather_facts: false
+  # Requires: ansible-galaxy collection install paloaltonetworks.panos  (and pip install pan-os-python)
+  vars:
+    provider:
+      ip_address: "{{ ansible_host }}"
+      username: "{{ panos_username }}"
+      password: "{{ panos_password }}"
+  tasks:
+    - name: 'Service tcp-443'
+      paloaltonetworks.panos.panos_service_object:
+        provider: "{{ provider }}"
+        name: 'tcp-443'
+        protocol: tcp
+        destination_port: '443'
+
+    - name: 'Service udp-53'
+      paloaltonetworks.panos.panos_service_object:
+        provider: "{{ provider }}"
+        name: 'udp-53'
+        protocol: udp
+        destination_port: '53'
+
+    - name: 'web-in'
+      paloaltonetworks.panos.panos_security_rule:
+        provider: "{{ provider }}"
+        rule_name: 'web-in'
+        source_zone: ['any']
+        source_ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+        destination_zone: ['any']
+        destination_ip: ['10.10.10.0/24']
+        application: ['any']
+        service: ['tcp-443']
+        action: allow
+        log_end: false
+
+    - name: 'dns-out'
+      paloaltonetworks.panos.panos_security_rule:
+        provider: "{{ provider }}"
+        rule_name: 'dns-out'
+        source_zone: ['any']
+        source_ip: ['any']
+        destination_zone: ['any']
+        destination_ip: ['1.1.1.1', '8.8.8.8']
+        application: ['any']
+        service: ['udp-53']
+        action: allow
+        log_end: false
+
+    - name: 'deny-rest'
+      paloaltonetworks.panos.panos_security_rule:
+        provider: "{{ provider }}"
+        rule_name: 'deny-rest'
+        source_zone: ['any']
+        source_ip: ['any']
+        destination_zone: ['any']
+        destination_ip: ['any']
+        application: ['any']
+        service: ['any']
+        action: drop
+        log_end: false
+
+    # Rules are created in order at the bottom of the rulebase; commit applies them.
+    - name: Commit
+      paloaltonetworks.panos.panos_commit_firewall:
+        provider: "{{ provider }}"
 "
 `;
 

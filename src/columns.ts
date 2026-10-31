@@ -31,6 +31,8 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   firewalld: ['zone', 'permanent', 'logging'],
   'firewalld-ansible': ['zone', 'permanent', 'logging'],
   cisco: ['logging'],
+  'cisco-ansible': ['logging'],
+  'cisco-tf': ['logging'],
   nftables: ['logging'],
   'nftables-ansible': ['logging'],
   iptables: ['logging'],
@@ -38,6 +40,7 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   fmc: ['srcZone', 'dstZone', 'logging', 'notes'],
   panos: ['srcZone', 'dstZone', 'logging', 'notes'],
   'panos-1x': ['srcZone', 'dstZone', 'logging', 'notes'],
+  'panos-ansible': ['srcZone', 'dstZone', 'logging', 'notes'],
 }
 
 export const hasExtra = (rule: Rule, key: ColKey) => Boolean(rule[key])

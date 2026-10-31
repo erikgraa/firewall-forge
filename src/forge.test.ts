@@ -158,6 +158,27 @@ describe('generators (behaviour)', () => {
     expect(new Set(TARGETS.map((t) => t.id)).size).toBe(TARGETS.length)
   })
 
+  it('cisco ansible/terraform expand ports and wildcards from one plan', () => {
+    const rules = [rule({ source: '10.0.0.0/8', destination: '10.1.1.1', service: 'Custom', ports: '80,5985-5986', logging: true })]
+    const ans = out('cisco-ansible', rules)
+    expect(ans).toContain('cisco.ios.ios_acls:')
+    expect(ans).toContain('wildcard_bits: 0.255.255.255')
+    expect(ans).toContain('host: 10.1.1.1')
+    expect(ans).toContain("start: '5985'")
+    expect(ans).toContain('set: true')
+    const tf = out('cisco-tf', rules)
+    expect(tf).toContain('resource "iosxe_access_list_extended"')
+    expect(tf).toContain('destination_port_range_from = "5985"')
+    expect(tf).toContain('log = true')
+  })
+
+  it('panos ansible creates service objects before rules and ends with a commit', () => {
+    const text = out('panos-ansible', [rule({ ports: '443' })])
+    expect(text.indexOf('panos_service_object')).toBeLessThan(text.indexOf('panos_security_rule'))
+    expect(text).toContain('panos_commit_firewall')
+    expect(text).toContain("service: ['tcp-443']")
+  })
+
   it('panos creates service objects and references them', () => {
     const text = out('panos', [rule({ ports: '443' })])
     expect(text).toContain('resource "panos_service" "tcp-443"')

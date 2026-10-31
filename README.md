@@ -21,11 +21,11 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies, or Ansible (`ansible.posix.firewalld`) |
-| 🌐 | Cisco ACL | IOS extended access lists |
+| 🌐 | Cisco ACL | IOS extended access lists, Ansible (`cisco.ios.ios_acls`) or Terraform (`CiscoDevNet/iosxe`, IOS XE only) |
 | 🐧 | nftables | `nft -f` ruleset (`table inet`), or Ansible |
 | 🐧 | iptables (legacy) | `iptables -A` commands, or Ansible (`ansible.builtin.iptables`) |
 | 🛡️ | Cisco FMC (Firepower) | Terraform (`CiscoDevNet/fmc` 2.x: `fmc_access_control_policy`) |
-| 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`; or 1.x: `panos_security_rule_group`) |
+| 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`; or 1.x: `panos_security_rule_group`) or Ansible (`paloaltonetworks.panos`) |
 
 ## ✨ Features
 
