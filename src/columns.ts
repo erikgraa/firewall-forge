@@ -28,6 +28,8 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   'sdn-ps': ['priority', 'logging'],
   'azl-nsg': ['priority'],
   'azl-bicep': ['priority', 'notes'],
+  'azfw-tf': [],
+  'azfw-bicep': ['notes'],
   windows: ['profile', 'program'],
   firewalld: ['zone', 'permanent', 'logging'],
   'firewalld-ansible': ['zone', 'permanent', 'logging'],

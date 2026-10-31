@@ -66,6 +66,7 @@ const targetWarnings = (rules: Rule[], variant: TargetId): Issue[] => {
     'sdn-ps': 'Deny',
     'azl-nsg': 'Deny',
     'azl-bicep': 'Deny',
+    'azfw-tf': 'Deny',
   }
   if (denyWord[target] && rejects.length)
     out.push(warn(`This target has no reject action — ${quoted(rejects)} will be emitted as ${denyWord[target]} (silently dropped).`))
@@ -84,6 +85,9 @@ const targetWarnings = (rules: Rule[], variant: TargetId): Issue[] => {
     if (!last || last.action === 'ALLOW')
       out.push(warn('Chains default to ACCEPT — add a final catch-all drop rule if you want default-deny.'))
   }
+
+  if (target === 'azfw-tf')
+    out.push(warn('Azure Firewall rules are source → destination only (Direction is ignored) and each rule collection has one action, so consecutive rules with the same action are grouped. Only network rules are generated; use IP groups for named sources and destinations.'))
 
   if (['fmc', 'panos'].includes(target) && rules.some((r) => r.direction === 'Outbound'))
     out.push(warn('Direction is not used on this target (stateful, zone-based) — set the From/To zones instead.'))

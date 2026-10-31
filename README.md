@@ -18,6 +18,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | --- | --- | --- |
 | ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (`VMware.Sdk.Nsx.Policy` module, or the Policy REST API via `Invoke-RestMethod`) |
 | 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
+| 🔥 | Azure Firewall (policy) | Terraform (`azurerm_firewall_policy_rule_collection_group`) or Bicep (`Microsoft.Network/firewallPolicies/ruleCollectionGroups`), network rules |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies, or Ansible (`ansible.posix.firewalld`) |
@@ -57,6 +58,8 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [ ] 😈 FreeBSD ipfw output
 - [ ] 🐡 pf output (FreeBSD / OpenBSD / OPNsense / pfSense)
 - [ ] ☁️ AWS security groups and Azure NSGs (Terraform)
+- [x] 🔥☁️ Azure Firewall policy rule collection groups: Terraform and Bicep (network rules only)
+- [ ] 🌍 Azure Firewall application rules (FQDN / FQDN tags) and DNAT rules
 - [ ] ☸️ Kubernetes NetworkPolicy / Cilium
 - [x] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)
 - [ ] 🔄 Reverse import from `iptables-save`, `nft list ruleset` and NSX JSON

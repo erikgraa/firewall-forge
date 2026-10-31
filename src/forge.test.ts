@@ -188,6 +188,28 @@ describe('generators (behaviour)', () => {
     expect(text).toContain('Invoke-PatchSecurityPolicyForDomain -DomainId')
   })
 
+  it('azure firewall groups consecutive same-action rules into collections and skips unresolved names', () => {
+    const rules = [
+      rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' }),
+      rule({ name: 'b', source: '10.0.0.0/8', destination: 'login.microsoftonline.com' }),
+      rule({ name: 'c', source: 'corp', destination: '10.1.1.1' }),
+      rule({ name: 'd', action: 'DROP', source: '10.0.0.0/8', destination: '10.9.9.9' }),
+    ]
+    const tf = out('azfw-tf', rules)
+    expect(tf.match(/network_rule_collection \{/g)).toHaveLength(2)
+    expect(tf).toContain('destination_fqdns     = ["login.microsoftonline.com"]')
+    expect(tf).toContain('# TODO: c: "corp"')
+    expect(tf).not.toContain('name                  = "c"')
+    const bicep = out('azfw-bicep', rules)
+    expect(bicep).toContain("type: 'Deny'")
+    expect(bicep).toContain("ruleType: 'NetworkRule'")
+  })
+
+  it('bicep outputs escape single quotes', () => {
+    expect(out('azfw-bicep', [rule({ name: "it's", source: '10.0.0.0/8', destination: '10.1.1.1', notes: "a'b" })])).toContain("name: 'it\\'s'")
+    expect(out('azl-bicep', [rule({ name: "it's", notes: "a'b" })])).toContain("description: 'a\\'b'")
+  })
+
   it('panos creates service objects and references them', () => {
     const text = out('panos', [rule({ ports: '443' })])
     expect(text).toContain('resource "panos_service" "tcp-443"')

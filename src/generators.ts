@@ -646,7 +646,7 @@ const azlBicep = (rules: Rule[], { policyName }: Options) => {
     const ports = splitPorts(r)
     const lines = [
       `  parent: ${nsg}`,
-      `  name: '${r.name}'`,
+      `  name: '${r.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`,
       '  extendedLocation: {',
       '    name: customLocationId',
       "    type: 'CustomLocation'",
@@ -661,7 +661,7 @@ const azlBicep = (rules: Rule[], { policyName }: Options) => {
       `    destinationAddressPrefixes: ${strs(prefixes(r.destination, 'net'))}`,
       `    destinationPortRanges: ${strs(ports.length ? ports : ['*'])}`,
     ]
-    if (r.notes.trim()) lines.push(`    description: '${r.notes.trim().slice(0, 140)}'`)
+    if (r.notes.trim()) lines.push(`    description: '${r.notes.trim().slice(0, 140).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`)
     lines.push('  }')
     return `resource ${ident(r.name) || `rule${i}`}Rule 'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview' = {\n${lines.join('\n')}\n}\n`
   })
@@ -1052,6 +1052,150 @@ ${[...svcTasks, ...ruleTasks].join('\n\n')}
 `
 }
 
+const looksLikeFqdn = (x: string) => /^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(x)
+
+interface AzfwRule {
+  name: string
+  protocols: string[]
+  src: string[]
+  dstAddrs: string[]
+  dstFqdns: string[]
+  ports: string[]
+  description: string
+}
+interface AzfwCollection {
+  todos: string[]
+  name: string
+  priority: number
+  action: 'Allow' | 'Deny'
+  rules: AzfwRule[]
+}
+
+// Azure Firewall applies one action per rule collection, so consecutive rules with the same action share a collection.
+const azfwPlan = (rules: Rule[], policyName: string): AzfwCollection[] => {
+  const collections: AzfwCollection[] = []
+  for (const r of active(rules)) {
+    const action = r.action === 'ALLOW' ? 'Allow' : 'Deny'
+    let col = collections[collections.length - 1]
+    if (!col || col.action !== action) {
+      col = { name: `${slug(policyName)}-${collections.length + 1}-${action.toLowerCase()}`, priority: 1000 + collections.length * 100, action, rules: [], todos: [] }
+      collections.push(col)
+    }
+    const src = prefixes(r.source, 'nsx')
+    const dst = prefixes(r.destination, 'nsx')
+    const dstFqdns = dst.filter((x) => !isIp(x) && looksLikeFqdn(x))
+    const bad = [...src, ...dst].find((x) => !isIp(x) && !(dst.includes(x) && looksLikeFqdn(x)))
+    const ports = splitPorts(r)
+    if (bad) {
+      col.todos.push(`${r.name}: "${bad}" is not an IP/CIDR or FQDN — use an IP group (sourceIpGroups / destinationIpGroups)`)
+      continue
+    }
+    col.rules.push({
+      name: r.name,
+      protocols: [{ TCP: 'TCP', UDP: 'UDP', ICMP: 'ICMP', ANY: 'Any' }[r.protocol]],
+      src: src.length ? src : ['*'],
+      dstAddrs: dst.filter(isIp).length || dstFqdns.length ? dst.filter(isIp) : ['*'],
+      dstFqdns,
+      ports: ports.length ? ports : ['*'],
+      description: r.notes.trim(),
+    })
+  }
+  const kept = collections.filter((c) => c.rules.length)
+  const dropped = collections.filter((c) => !c.rules.length && c.todos.length)
+  kept.forEach((c, i) => {
+    c.priority = 1000 + i * 100
+    c.name = `--`
+  })
+  if (dropped.length && kept.length) kept[0].todos.push(...dropped.flatMap((c) => c.todos))
+  return kept
+}
+const azfwTerraform = (rules: Rule[], { policyName }: Options) => {
+  const list = (a: string[]) => `[${a.map((x) => `"${x}"`).join(', ')}]`
+  const cols = azfwPlan(rules, policyName).map((c) => {
+    const rs = c.rules.map((r) => {
+      const lines = [
+        `      name                  = "${r.name}"`,
+        `      protocols             = ${list(r.protocols)}`,
+        `      source_addresses      = ${list(r.src)}`,
+        ...(r.dstAddrs.length ? [`      destination_addresses = ${list(r.dstAddrs)}`] : []),
+        ...(r.dstFqdns.length ? [`      destination_fqdns     = ${list(r.dstFqdns)}`] : []),
+        `      destination_ports     = ${list(r.ports)}`,
+      ]
+      return `    rule {\n${lines.join('\n')}\n    }`
+    })
+    const todos = c.todos.map((t) => `  # TODO: ${t}\n`).join('')
+    return `${todos}  network_rule_collection {
+    name     = "${c.name}"
+    priority = ${c.priority}
+    action   = "${c.action}"
+${rs.join('\n')}
+  }`
+  })
+  return `variable "firewall_policy_id" {
+  type        = string
+  description = "ID of the existing azurerm_firewall_policy"
+}
+
+# Destination FQDNs in network rules require DNS proxy to be enabled on the firewall policy.
+resource "azurerm_firewall_policy_rule_collection_group" "${slug(policyName).replace(/-/g, '_')}" {
+  name               = "${slug(policyName)}"
+  firewall_policy_id = var.firewall_policy_id
+  priority           = 1000
+
+${cols.join('\n\n')}
+}
+`
+}
+
+const azfwBicep = (rules: Rule[], { policyName }: Options) => {
+  const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const strs = (a: string[]) => `[${a.map((x) => `'${esc(x)}'`).join(', ')}]`
+  const cols = azfwPlan(rules, policyName).map((c) => {
+    const rs = c.rules.map((r) => {
+      const lines = [
+        "            ruleType: 'NetworkRule'",
+        `            name: '${esc(r.name)}'`,
+        ...(r.description ? [`            description: '${esc(r.description.slice(0, 500))}'`] : []),
+        `            ipProtocols: ${strs(r.protocols)}`,
+        `            sourceAddresses: ${strs(r.src)}`,
+        ...(r.dstAddrs.length ? [`            destinationAddresses: ${strs(r.dstAddrs)}`] : []),
+        ...(r.dstFqdns.length ? [`            destinationFqdns: ${strs(r.dstFqdns)}`] : []),
+        `            destinationPorts: ${strs(r.ports)}`,
+      ]
+      return `          {\n${lines.join('\n')}\n          }`
+    })
+    const todos = c.todos.map((t) => `      // TODO: ${t}\n`).join('')
+    return `${todos}      {
+        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+        name: '${c.name}'
+        priority: ${c.priority}
+        action: {
+          type: '${c.action}'
+        }
+        rules: [
+${rs.join('\n')}
+        ]
+      }`
+  })
+  return `param firewallPolicyName string
+
+resource policy 'Microsoft.Network/firewallPolicies@2024-05-01' existing = {
+  name: firewallPolicyName
+}
+
+resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+  parent: policy
+  name: '${slug(policyName)}'
+  properties: {
+    priority: 1000
+    ruleCollections: [
+${cols.join('\n')}
+    ]
+  }
+}
+`
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
   { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (REST)', filename: 'nsx-policy-rest.ps1', generate: nsxPs },
@@ -1059,6 +1203,8 @@ export const TARGETS: Target[] = [
   { id: 'sdn-ps', platform: 'sdn', label: 'SDN ACL', format: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
   { id: 'azl-nsg', platform: 'azl', label: 'Azure Local NSG', format: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
   { id: 'azl-bicep', platform: 'azl', label: 'Azure Local NSG', format: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },
+  { id: 'azfw-tf', platform: 'azfw', label: 'Azure Firewall', format: 'Terraform', filename: 'azure-firewall.tf', generate: azfwTerraform },
+  { id: 'azfw-bicep', platform: 'azfw', label: 'Azure Firewall', format: 'Bicep', filename: 'azure-firewall.bicep', generate: azfwBicep },
   { id: 'windows', platform: 'windows', label: 'Windows Firewall', format: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'nftables', platform: 'nftables', label: 'nftables', format: 'nft', filename: 'rules.nft', generate: nftables },
   { id: 'nftables-ansible', platform: 'nftables', label: 'nftables', format: 'Ansible', filename: 'nftables.yml', generate: nftablesAnsible },
