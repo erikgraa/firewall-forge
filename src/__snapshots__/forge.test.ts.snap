@@ -1,5 +1,78 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`generators (snapshots) > azl-bicep output is stable 1`] = `
+"param location string
+param customLocationId string
+
+resource generated 'Microsoft.AzureStackHCI/networkSecurityGroups@2025-09-01-preview' = {
+  name: 'generated'
+  location: location
+  extendedLocation: {
+    name: customLocationId
+    type: 'CustomLocation'
+  }
+  properties: {}
+}
+
+resource web_inRule 'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview' = {
+  parent: generated
+  name: 'web-in'
+  extendedLocation: {
+    name: customLocationId
+    type: 'CustomLocation'
+  }
+  properties: {
+    priority: 110
+    access: 'Allow'
+    direction: 'Inbound'
+    protocol: 'Tcp'
+    sourceAddressPrefixes: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+    sourcePortRanges: ['*']
+    destinationAddressPrefixes: ['10.10.10.0/24']
+    destinationPortRanges: ['443']
+  }
+}
+
+resource dns_outRule 'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview' = {
+  parent: generated
+  name: 'dns-out'
+  extendedLocation: {
+    name: customLocationId
+    type: 'CustomLocation'
+  }
+  properties: {
+    priority: 120
+    access: 'Allow'
+    direction: 'Outbound'
+    protocol: 'Udp'
+    sourceAddressPrefixes: ['*']
+    sourcePortRanges: ['*']
+    destinationAddressPrefixes: ['1.1.1.1', '8.8.8.8']
+    destinationPortRanges: ['53']
+  }
+}
+
+resource deny_restRule 'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview' = {
+  parent: generated
+  name: 'deny-rest'
+  extendedLocation: {
+    name: customLocationId
+    type: 'CustomLocation'
+  }
+  properties: {
+    priority: 130
+    access: 'Deny'
+    direction: 'Inbound'
+    protocol: '*'
+    sourceAddressPrefixes: ['*']
+    sourcePortRanges: ['*']
+    destinationAddressPrefixes: ['*']
+    destinationPortRanges: ['*']
+  }
+}
+"
+`;
+
 exports[`generators (snapshots) > azl-nsg output is stable 1`] = `
 "$rg  = "<resource-group>"
 $nsg = "generated"

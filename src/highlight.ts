@@ -1,6 +1,6 @@
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-const token = /(#[^\n]*|\/\/[^\n]*|(?<![^\n])![^\n]*)|("(?:[^"\\\n]|\\.)*"|'[^'\n]*')|(\s--?[A-Za-z][\w-]*)|(\$[A-Za-z_]\w*)|(\b(?:resource|rule|az|firewall-cmd|iptables|table|chain|New-NetFirewallRule|permit|deny|remark|interface|New-Object|New-NetworkControllerAccessControlList)\b|^ip access-list)/gm
+const token = /(#[^\n]*|\/\/[^\n]*|(?<![^\n])![^\n]*)|("(?:[^"\\\n]|\\.)*"|'[^'\n]*')|(\s--?[A-Za-z][\w-]*)|(\$[A-Za-z_]\w*)|(\b(?:resource|rule|az|firewall-cmd|param|iptables|table|chain|New-NetFirewallRule|permit|deny|remark|interface|New-Object|New-NetworkControllerAccessControlList)\b|^ip access-list)/gm
 
 export const highlight = (code: string): string =>
   escapeHtml(code).replace(token, (m, comment, str, flag, variable, kw) => {

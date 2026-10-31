@@ -478,10 +478,57 @@ ${body.join(',\n')}
 `
 }
 
+const azlBicep = (rules: Rule[], { policyName }: Options) => {
+  const ident = (s: string) => s.replace(/[^A-Za-z0-9]+/g, '_').replace(/^(\d)/, '_$1')
+  const strs = (a: string[]) => `[${a.map((x) => `'${x}'`).join(', ')}]`
+  const proto = { TCP: 'Tcp', UDP: 'Udp', ICMP: 'Icmp', ANY: '*' }
+  const nsg = ident(slug(policyName))
+
+  const body = active(rules).map((r, i) => {
+    const ports = splitPorts(r)
+    const lines = [
+      `  parent: ${nsg}`,
+      `  name: '${r.name}'`,
+      '  extendedLocation: {',
+      '    name: customLocationId',
+      "    type: 'CustomLocation'",
+      '  }',
+      '  properties: {',
+      `    priority: ${prio(r, i)}`,
+      `    access: '${aclAction(r)}'`,
+      `    direction: '${r.direction}'`,
+      `    protocol: '${proto[r.protocol]}'`,
+      `    sourceAddressPrefixes: ${strs(prefixes(r.source, 'net'))}`,
+      "    sourcePortRanges: ['*']",
+      `    destinationAddressPrefixes: ${strs(prefixes(r.destination, 'net'))}`,
+      `    destinationPortRanges: ${strs(ports.length ? ports : ['*'])}`,
+    ]
+    if (r.notes.trim()) lines.push(`    description: '${r.notes.trim().slice(0, 140)}'`)
+    lines.push('  }')
+    return `resource ${ident(r.name) || `rule${i}`}Rule 'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview' = {\n${lines.join('\n')}\n}\n`
+  })
+
+  return `param location string
+param customLocationId string
+
+resource ${nsg} 'Microsoft.AzureStackHCI/networkSecurityGroups@2025-09-01-preview' = {
+  name: '${slug(policyName)}'
+  location: location
+  extendedLocation: {
+    name: customLocationId
+    type: 'CustomLocation'
+  }
+  properties: {}
+}
+
+${body.join('\n')}`
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
   { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
   { id: 'azl-nsg', label: 'Azure Local NSG', hint: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
+  { id: 'azl-bicep', label: 'Azure Local NSG', hint: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },
   { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'nftables', label: 'nftables', hint: 'Linux', filename: 'rules.nft', generate: nftables },
   { id: 'iptables', label: 'iptables', hint: 'Linux (legacy)', filename: 'iptables.sh', generate: iptables },

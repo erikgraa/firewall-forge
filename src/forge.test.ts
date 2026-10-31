@@ -45,6 +45,16 @@ describe('generators (behaviour)', () => {
     expect(out('nsx', [rule({ service: 'SMB (TCP 445)', ports: '445' })])).toContain('TODO')
   })
 
+  it('azure local bicep emits child security rules with explicit priorities', () => {
+    const text = out('azl-bicep', [rule({ name: 'web-in', source: '10.0.0.0/8', destination: '10.1.1.0/24', priority: '250' }), rule({ name: 'ping', protocol: 'ICMP', ports: '', action: 'DROP' })])
+    expect(text).toContain("'Microsoft.AzureStackHCI/networkSecurityGroups/securityRules@2025-09-01-preview'")
+    expect(text).toContain('parent: generated')
+    expect(text).toContain('priority: 250')
+    expect(text).toContain("access: 'Deny'")
+    expect(text).toContain("protocol: 'Icmp'")
+    expect(text).toContain("destinationPortRanges: ['443']")
+  })
+
   it('azure local priority honours explicit values', () => {
     expect(out('azl-nsg', [rule({ priority: '250' })])).toContain('--priority 250')
   })

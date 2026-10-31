@@ -25,6 +25,7 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   nsx: ['scope', 'logging', 'notes'],
   'sdn-ps': ['priority', 'logging'],
   'azl-nsg': ['priority'],
+  'azl-bicep': ['priority', 'notes'],
   windows: ['profile', 'program'],
   firewalld: ['zone', 'permanent', 'logging'],
   cisco: ['logging'],

@@ -1,7 +1,7 @@
 export type Action = 'ALLOW' | 'DROP' | 'REJECT'
 export type Direction = 'Inbound' | 'Outbound'
 export type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'ANY'
-export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables'
+export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables'
 
 export interface Rule {
   id: string
