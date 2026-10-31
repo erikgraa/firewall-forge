@@ -1,7 +1,7 @@
 export type Action = 'ALLOW' | 'DROP' | 'REJECT'
 export type Direction = 'Inbound' | 'Outbound'
 export type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'ANY'
-export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk'
+export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk' | 'azfw-tf' | 'azfw-bicep'
 
 export interface Rule {
   id: string
@@ -119,5 +119,6 @@ export const baseTarget = (t: TargetId): TargetId => {
   if (t === 'nsx-ps' || t === 'nsx-sdk') return 'nsx'
   if (t === 'panos-1x') return 'panos'
   if (t === 'cisco-tf') return 'cisco'
+  if (t === 'azfw-bicep') return 'azfw-tf'
   return t.endsWith('-ansible') ? (t.replace('-ansible', '') as TargetId) : t
 }

@@ -1,5 +1,116 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`generators (snapshots) > azfw-bicep output is stable 1`] = `
+"param firewallPolicyName string
+
+resource policy 'Microsoft.Network/firewallPolicies@2024-05-01' existing = {
+  name: firewallPolicyName
+}
+
+resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+  parent: policy
+  name: 'generated'
+  properties: {
+    priority: 1000
+    ruleCollections: [
+      {
+        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+        name: '--'
+        priority: 1000
+        action: {
+          type: 'Allow'
+        }
+        rules: [
+          {
+            ruleType: 'NetworkRule'
+            name: 'web-in'
+            ipProtocols: ['TCP']
+            sourceAddresses: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+            destinationAddresses: ['10.10.10.0/24']
+            destinationPorts: ['443']
+          }
+          {
+            ruleType: 'NetworkRule'
+            name: 'dns-out'
+            ipProtocols: ['UDP']
+            sourceAddresses: ['*']
+            destinationAddresses: ['1.1.1.1', '8.8.8.8']
+            destinationPorts: ['53']
+          }
+        ]
+      }
+      {
+        ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
+        name: '--'
+        priority: 1100
+        action: {
+          type: 'Deny'
+        }
+        rules: [
+          {
+            ruleType: 'NetworkRule'
+            name: 'deny-rest'
+            ipProtocols: ['Any']
+            sourceAddresses: ['*']
+            destinationAddresses: ['*']
+            destinationPorts: ['*']
+          }
+        ]
+      }
+    ]
+  }
+}
+"
+`;
+
+exports[`generators (snapshots) > azfw-tf output is stable 1`] = `
+"variable "firewall_policy_id" {
+  type        = string
+  description = "ID of the existing azurerm_firewall_policy"
+}
+
+# Destination FQDNs in network rules require DNS proxy to be enabled on the firewall policy.
+resource "azurerm_firewall_policy_rule_collection_group" "generated" {
+  name               = "generated"
+  firewall_policy_id = var.firewall_policy_id
+  priority           = 1000
+
+  network_rule_collection {
+    name     = "--"
+    priority = 1000
+    action   = "Allow"
+    rule {
+      name                  = "web-in"
+      protocols             = ["TCP"]
+      source_addresses      = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+      destination_addresses = ["10.10.10.0/24"]
+      destination_ports     = ["443"]
+    }
+    rule {
+      name                  = "dns-out"
+      protocols             = ["UDP"]
+      source_addresses      = ["*"]
+      destination_addresses = ["1.1.1.1", "8.8.8.8"]
+      destination_ports     = ["53"]
+    }
+  }
+
+  network_rule_collection {
+    name     = "--"
+    priority = 1100
+    action   = "Deny"
+    rule {
+      name                  = "deny-rest"
+      protocols             = ["Any"]
+      source_addresses      = ["*"]
+      destination_addresses = ["*"]
+      destination_ports     = ["*"]
+    }
+  }
+}
+"
+`;
+
 exports[`generators (snapshots) > azl-bicep output is stable 1`] = `
 "param location string
 param customLocationId string
