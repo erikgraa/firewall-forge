@@ -23,16 +23,21 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
 
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   nsx: ['scope', 'logging', 'notes'],
+  'nsx-ps': ['scope', 'logging', 'notes'],
   'sdn-ps': ['priority', 'logging'],
   'azl-nsg': ['priority'],
   'azl-bicep': ['priority', 'notes'],
   windows: ['profile', 'program'],
   firewalld: ['zone', 'permanent', 'logging'],
+  'firewalld-ansible': ['zone', 'permanent', 'logging'],
   cisco: ['logging'],
   nftables: ['logging'],
+  'nftables-ansible': ['logging'],
   iptables: ['logging'],
+  'iptables-ansible': ['logging'],
   fmc: ['srcZone', 'dstZone', 'logging', 'notes'],
   panos: ['srcZone', 'dstZone', 'logging', 'notes'],
+  'panos-1x': ['srcZone', 'dstZone', 'logging', 'notes'],
 }
 
 export const hasExtra = (rule: Rule, key: ColKey) => Boolean(rule[key])

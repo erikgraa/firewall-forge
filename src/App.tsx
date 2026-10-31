@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { TARGETS } from './generators'
+import { PLATFORMS, TARGETS } from './generators'
 import { highlight } from './highlight'
 import { parseCsv } from './csv'
 import { validate } from './validate'
@@ -65,6 +65,13 @@ export default function App() {
   }, [rules, target, policyName])
 
   const current = TARGETS.find((t) => t.id === target)!
+  const platforms = PLATFORMS
+  const formats = TARGETS.filter((t) => t.platform === current.platform)
+  const pickPlatform = (platform: string) => {
+    const options = TARGETS.filter((t) => t.platform === platform)
+    const sameFormat = options.find((t) => t.format === current.format)
+    setTarget((sameFormat ?? options[0]).id)
+  }
   const extras = EXTRA_COLUMNS[target]
   const gridCols = `${BASE_COLS} ${extras.map((k) => COLUMNS[k].width).join(' ')} 118px`.replace(/\s+/g, ' ')
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
@@ -160,7 +167,7 @@ export default function App() {
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="logo" />
         <div>
           <h1>Firewall Forge</h1>
-          <p>One rule model → NSX, Windows SDN, Azure Local, Windows Firewall, firewalld and Cisco. Runs entirely in your browser.</p>
+          <p>One rule model → NSX, SDN, Azure Local, Windows Firewall, Linux (nftables / iptables / firewalld), Cisco and Palo Alto. Runs entirely in your browser.</p>
         </div>
       </header>
 
@@ -239,13 +246,23 @@ export default function App() {
         <section className="panel output">
           <div className="panel-head">
             <div className="tabs">
-              {TARGETS.map((t) => (
-                <button key={t.id} className={t.id === target ? 'tab active' : 'tab'} onClick={() => setTarget(t.id)}>
-                  {t.label}<small>{t.hint}</small>
+              {platforms.map((p) => (
+                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} onClick={() => pickPlatform(p.platform)}>
+                  {p.label}
+                  <small>{TARGETS.filter((t) => t.platform === p.platform).map((t) => t.format).join(' · ')}</small>
                 </button>
               ))}
             </div>
           </div>
+          {formats.length > 1 && (
+            <div className="formats">
+              {formats.map((t) => (
+                <button key={t.id} className={t.id === target ? 'format active' : 'format'} onClick={() => setTarget(t.id)}>
+                  {t.format}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="toolbar">
             <label>
               Policy / ACL name

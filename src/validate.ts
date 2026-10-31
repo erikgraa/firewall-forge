@@ -1,4 +1,4 @@
-import { ENDPOINTS, SERVICES } from './model'
+import { ENDPOINTS, SERVICES, baseTarget } from './model'
 import type { Rule, TargetId } from './model'
 
 export interface Issue {
@@ -52,7 +52,8 @@ const isIp = (s: string) => cidr.test(s)
 const ENDPOINT_NAMES = new Set(Object.keys(ENDPOINTS))
 const nameOnly = (v: string) => !ENDPOINT_NAMES.has(v.trim()) && v.split(/\s*,\s*/).some((x) => x && !isIp(x))
 
-const targetWarnings = (rules: Rule[], target: TargetId): Issue[] => {
+const targetWarnings = (rules: Rule[], variant: TargetId): Issue[] => {
+  const target = baseTarget(variant)
   const warn = (message: string): Issue => ({ level: 'warn', message })
   const out: Issue[] = []
   const rejects = rules.filter((r) => r.action === 'REJECT')

@@ -16,19 +16,20 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 | | Target | Output |
 | --- | --- | --- |
-| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) |
+| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (Policy API `Invoke-RestMethod`) |
 | 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
-| 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies |
+| 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies, or Ansible (`ansible.posix.firewalld`) |
 | 🌐 | Cisco ACL | IOS extended access lists |
-| 🐧 | nftables | `nft -f` ruleset (`table inet`) |
-| 🐧 | iptables (legacy) | `iptables -A` commands |
+| 🐧 | nftables | `nft -f` ruleset (`table inet`), or Ansible |
+| 🐧 | iptables (legacy) | `iptables -A` commands, or Ansible (`ansible.builtin.iptables`) |
 | 🛡️ | Cisco FMC (Firepower) | Terraform (`CiscoDevNet/fmc` 2.x: `fmc_access_control_policy`) |
-| 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`, `panos_service`) |
+| 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`; or 1.x: `panos_security_rule_group`) |
 
 ## ✨ Features
 
+- 🧩 Platforms with switchable output formats (e.g. NSX: Terraform / PowerShell, Azure Local: az CLI / Bicep, Linux: native / Ansible)
 - 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
 - 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule

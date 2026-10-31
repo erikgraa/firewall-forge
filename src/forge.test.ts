@@ -110,6 +110,54 @@ describe('generators (behaviour)', () => {
     expect(text).toContain('log_connection_end = true')
   })
 
+  it('firewalld ansible: module for zones, command for policies, reload before runtime rules', () => {
+    const text = out('firewalld-ansible', [
+      rule({ name: 'keep', source: '10.0.0.0/8', destination: '10.1.1.1' }),
+      rule({ name: 'temp', source: '10.0.0.0/8', destination: '10.1.1.2', permanent: false }),
+      rule({ name: 'egress', direction: 'Outbound', source: '10.0.0.0/8', destination: '10.2.2.2' }),
+    ])
+    expect(text).toContain('ansible.posix.firewalld:')
+    expect(text).toContain('permanent: false')
+    expect(text).toContain("argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-rich-rule'")
+    expect(text.indexOf("'Reload firewalld")).toBeGreaterThan(text.indexOf("name: 'keep'"))
+    expect(text.indexOf("name: 'temp'")).toBeGreaterThan(text.indexOf("'Reload firewalld"))
+  })
+
+  it('iptables ansible uses multiport lists and log tasks', () => {
+    const text = out('iptables-ansible', [rule({ ports: '80,443', service: 'Custom', logging: true })])
+    expect(text).toContain("destination_ports: ['80', '443']")
+    expect(text).toContain('jump: LOG')
+  })
+
+  it('nftables ansible embeds a flushed, validated ruleset with consistent indentation', () => {
+    const text = out('nftables-ansible')
+    expect(text).toContain('validate: nft -c -f %s')
+    expect(text).toContain('flush table inet generated')
+    for (const line of text.split('\n').slice(text.split('\n').findIndex((l) => l.includes('content: |')) + 1)) {
+      if (line.trim() === '' || line.startsWith('      notify')) continue
+      if (line.startsWith('      notify') || line.startsWith('  handlers')) break
+      expect(line.startsWith('          ')).toBe(true)
+    }
+  })
+
+  it('nsx powershell emits a PATCH with inline service entries for unknown services', () => {
+    const text = out('nsx-ps', [rule({ service: 'SMB (TCP 445)', ports: '445' })])
+    expect(text).toContain('Invoke-RestMethod -Method Patch')
+    expect(text).toContain('L4PortSetServiceEntry')
+    const json = text.slice(text.indexOf("@'\n") + 3, text.indexOf("\n'@"))
+    expect(JSON.parse(json).rules[0].service_entries[0].destination_ports).toEqual(['445'])
+  })
+
+  it('panos 1.x uses the rule group resource', () => {
+    expect(out('panos-1x')).toContain('resource "panos_security_rule_group"')
+    expect(out('panos-1x')).toContain('~> 1.11')
+  })
+
+  it('every target belongs to a platform with at least one format', () => {
+    for (const t of TARGETS) expect(TARGETS.filter((x) => x.platform === t.platform).length).toBeGreaterThan(0)
+    expect(new Set(TARGETS.map((t) => t.id)).size).toBe(TARGETS.length)
+  })
+
   it('panos creates service objects and references them', () => {
     const text = out('panos', [rule({ ports: '443' })])
     expect(text).toContain('resource "panos_service" "tcp-443"')

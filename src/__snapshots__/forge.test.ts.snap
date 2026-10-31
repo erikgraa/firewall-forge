@@ -128,6 +128,79 @@ firewall-cmd --reload
 "
 `;
 
+exports[`generators (snapshots) > firewalld-ansible output is stable 1`] = `
+"---
+- name: 'generated (firewalld)'
+  hosts: all
+  become: true
+  # Requires: ansible-galaxy collection install ansible.posix
+  tasks:
+    - name: 'Create policy generated-out'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--permanent', '--new-policy', 'generated-out']
+      register: result
+      failed_when: result.rc != 0 and 'NAME_CONFLICT' not in result.stderr
+      changed_when: result.rc == 0
+
+    - name: 'Policy ingress zone HOST'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-ingress-zone', 'HOST']
+      changed_when: false
+
+    - name: 'Policy egress zone ANY'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-egress-zone', 'ANY']
+      changed_when: false
+
+    - name: 'web-in (1/3)'
+      ansible.posix.firewalld:
+        zone: public
+        rich_rule: 'rule priority="10" family="ipv4" source address="10.0.0.0/8" destination address="10.10.10.0/24" port port="443" protocol="tcp" accept'
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: 'web-in (2/3)'
+      ansible.posix.firewalld:
+        zone: public
+        rich_rule: 'rule priority="10" family="ipv4" source address="172.16.0.0/12" destination address="10.10.10.0/24" port port="443" protocol="tcp" accept'
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: 'web-in (3/3)'
+      ansible.posix.firewalld:
+        zone: public
+        rich_rule: 'rule priority="10" family="ipv4" source address="192.168.0.0/16" destination address="10.10.10.0/24" port port="443" protocol="tcp" accept'
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: 'dns-out (1/2)'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-rich-rule', 'rule priority="20" family="ipv4" destination address="1.1.1.1" port port="53" protocol="udp" accept']
+      changed_when: false
+
+    - name: 'dns-out (2/2)'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-rich-rule', 'rule priority="20" family="ipv4" destination address="8.8.8.8" port port="53" protocol="udp" accept']
+      changed_when: false
+
+    - name: 'deny-rest'
+      ansible.posix.firewalld:
+        zone: public
+        rich_rule: 'rule priority="30" drop'
+        permanent: true
+        immediate: true
+        state: enabled
+
+    - name: 'Reload firewalld (drops runtime-only rules)'
+      ansible.builtin.command:
+        argv: ['firewall-cmd', '--reload']
+      changed_when: false
+"
+`;
+
 exports[`generators (snapshots) > fmc output is stable 1`] = `
 "terraform {
   required_providers {
@@ -197,6 +270,40 @@ iptables -A INPUT -m comment --comment "deny-rest" -j DROP
 "
 `;
 
+exports[`generators (snapshots) > iptables-ansible output is stable 1`] = `
+"---
+- name: 'generated (iptables)'
+  hosts: all
+  become: true
+  # Rules are appended in order. IPv4 only. Persist with the netfilter-persistent / iptables-services packages.
+  tasks:
+    - name: 'web-in'
+      ansible.builtin.iptables:
+        chain: INPUT
+        source: '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+        destination: '10.10.10.0/24'
+        protocol: tcp
+        destination_port: '443'
+        comment: 'web-in'
+        jump: ACCEPT
+
+    - name: 'dns-out'
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        destination: '1.1.1.1,8.8.8.8'
+        protocol: udp
+        destination_port: '53'
+        comment: 'dns-out'
+        jump: ACCEPT
+
+    - name: 'deny-rest'
+      ansible.builtin.iptables:
+        chain: INPUT
+        comment: 'deny-rest'
+        jump: DROP
+"
+`;
+
 exports[`generators (snapshots) > nftables output is stable 1`] = `
 "#!/usr/sbin/nft -f
 # Chains default to "policy accept"; end with an explicit drop rule for a default-deny stance.
@@ -213,6 +320,50 @@ table inet generated {
     ip daddr { 1.1.1.1, 8.8.8.8 } udp dport 53 accept comment "dns-out"
   }
 }
+"
+`;
+
+exports[`generators (snapshots) > nftables-ansible output is stable 1`] = `
+"---
+- name: 'generated (nftables)'
+  hosts: all
+  become: true
+  # Include the directory from /etc/nftables.conf:  include "/etc/nftables.d/*.nft"
+  tasks:
+    - name: Ensure /etc/nftables.d exists
+      ansible.builtin.file:
+        path: /etc/nftables.d
+        state: directory
+        mode: '0755'
+
+    - name: Install ruleset
+      ansible.builtin.copy:
+        dest: /etc/nftables.d/generated.nft
+        mode: '0644'
+        validate: nft -c -f %s
+        content: |
+          add table inet generated
+          flush table inet generated
+          # Chains default to "policy accept"; end with an explicit drop rule for a default-deny stance.
+
+          table inet generated {
+            chain input {
+              type filter hook input priority filter; policy accept;
+              ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } ip daddr 10.10.10.0/24 tcp dport 443 accept comment "web-in"
+              drop comment "deny-rest"
+            }
+
+            chain output {
+              type filter hook output priority filter; policy accept;
+              ip daddr { 1.1.1.1, 8.8.8.8 } udp dport 53 accept comment "dns-out"
+            }
+          }
+
+      notify: Reload nftables
+
+  handlers:
+    - name: Reload nftables
+      ansible.builtin.command: nft -f /etc/nftables.d/generated.nft
 "
 `;
 
@@ -247,6 +398,88 @@ exports[`generators (snapshots) > nsx output is stable 1`] = `
     sequence_number    = 30
   }
 }
+"
+`;
+
+exports[`generators (snapshots) > nsx-ps output is stable 1`] = `
+"$nsx  = 'https://<nsx-manager>'
+$cred = Get-Credential
+
+$body = @'
+{
+  "display_name": "generated",
+  "category": "Application",
+  "rules": [
+    {
+      "id": "web-in",
+      "display_name": "web-in",
+      "sequence_number": 10,
+      "action": "ALLOW",
+      "direction": "IN",
+      "source_groups": [
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16"
+      ],
+      "destination_groups": [
+        "10.10.10.0/24"
+      ],
+      "scope": [
+        "ANY"
+      ],
+      "logged": false,
+      "services": [
+        "/infra/services/HTTPS"
+      ]
+    },
+    {
+      "id": "dns-out",
+      "display_name": "dns-out",
+      "sequence_number": 20,
+      "action": "ALLOW",
+      "direction": "OUT",
+      "source_groups": [
+        "ANY"
+      ],
+      "destination_groups": [
+        "1.1.1.1",
+        "8.8.8.8"
+      ],
+      "scope": [
+        "ANY"
+      ],
+      "logged": false,
+      "services": [
+        "/infra/services/DNS-UDP"
+      ]
+    },
+    {
+      "id": "deny-rest",
+      "display_name": "deny-rest",
+      "sequence_number": 30,
+      "action": "DROP",
+      "direction": "IN",
+      "source_groups": [
+        "ANY"
+      ],
+      "destination_groups": [
+        "ANY"
+      ],
+      "scope": [
+        "ANY"
+      ],
+      "logged": false,
+      "services": [
+        "ANY"
+      ]
+    }
+  ]
+}
+'@
+
+# PATCH creates or updates the whole policy in one call (idempotent).
+Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/infra/domains/default/security-policies/generated" \`
+  -Credential $cred -ContentType 'application/json' -Body $body -SkipCertificateCheck
 "
 `;
 
@@ -335,6 +568,76 @@ resource "panos_security_policy" "generated" {
       log_end               = false
     },
   ]
+}
+"
+`;
+
+exports[`generators (snapshots) > panos-1x output is stable 1`] = `
+"terraform {
+  required_providers {
+    panos = {
+      source  = "PaloAltoNetworks/panos"
+      version = "~> 1.11"
+    }
+  }
+}
+
+resource "panos_service_object" "tcp-443" {
+  name             = "tcp-443"
+  protocol         = "tcp"
+  destination_port = "443"
+}
+
+resource "panos_service_object" "udp-53" {
+  name             = "udp-53"
+  protocol         = "udp"
+  destination_port = "53"
+}
+
+resource "panos_security_rule_group" "generated" {
+  position_keyword = "bottom"
+
+  rule {
+    name                  = "web-in"
+    source_zones          = ["any"]
+    source_addresses      = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    source_users          = ["any"]
+    destination_zones     = ["any"]
+    destination_addresses = ["10.10.10.0/24"]
+    applications          = ["any"]
+    services              = [panos_service_object.tcp-443.name]
+    categories            = ["any"]
+    action                = "allow"
+    log_end               = false
+  }
+
+  rule {
+    name                  = "dns-out"
+    source_zones          = ["any"]
+    source_addresses      = ["any"]
+    source_users          = ["any"]
+    destination_zones     = ["any"]
+    destination_addresses = ["1.1.1.1", "8.8.8.8"]
+    applications          = ["any"]
+    services              = [panos_service_object.udp-53.name]
+    categories            = ["any"]
+    action                = "allow"
+    log_end               = false
+  }
+
+  rule {
+    name                  = "deny-rest"
+    source_zones          = ["any"]
+    source_addresses      = ["any"]
+    source_users          = ["any"]
+    destination_zones     = ["any"]
+    destination_addresses = ["any"]
+    applications          = ["any"]
+    services              = ["any"]
+    categories            = ["any"]
+    action                = "drop"
+    log_end               = false
+  }
 }
 "
 `;

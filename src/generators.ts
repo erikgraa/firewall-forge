@@ -3,8 +3,9 @@ import type { Rule, TargetId } from './model'
 
 export interface Target {
   id: TargetId
+  platform: string
   label: string
-  hint: string
+  format: string
   filename: string
   generate: (rules: Rule[], opts: Options) => string
 }
@@ -135,62 +136,219 @@ const windows = (rules: Rule[], { policyName }: Options) => {
   return lines.join('\n') + '\n'
 }
 
-const firewalld = (rules: Rule[], { policyName }: Options) => {
+interface FwRule {
+  zone?: string
+  policy?: string
+  rich: string
+}
+interface FwItem {
+  name: string
+  runtimeOnly: boolean
+  todo?: string
+  rules: FwRule[]
+}
+
+const firewalldPlan = (rules: Rule[], policyName: string) => {
   const act = (r: Rule) => ({ ALLOW: 'accept', DROP: 'drop', REJECT: 'reject' })[r.action]
   const live = active(rules)
-  const hasOut = live.some((r) => r.direction === 'Outbound')
-  const setup: string[] = []
-  if (hasOut) {
-    setup.push(
-      '# firewalld zones only filter inbound traffic; outbound rules use a policy (HOST -> ANY)',
-      `firewall-cmd --permanent --new-policy ${slug(policyName)}-out`,
-      `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-ingress-zone HOST`,
-      `firewall-cmd --permanent --policy ${slug(policyName)}-out --add-egress-zone ANY`,
-    )
-  }
+  const policy = live.some((r) => r.direction === 'Outbound') ? `${slug(policyName)}-out` : null
 
-  const emit = (r: Rule, i: number): string[] => {
+  const item = (r: Rule, i: number): FwItem => {
     const src = prefixes(r.source, 'nsx')
     const dst = prefixes(r.destination, 'nsx')
     const bad = [...src, ...dst].find((x) => !isIp(x))
-    const lines = [`# ${r.name}${r.permanent ? '' : ' (runtime only)'}`]
+    const out: FwItem = { name: r.name, runtimeOnly: !r.permanent, rules: [] }
     if (bad) {
-      lines.push(`# TODO: "${bad}" is not an IP/CIDR — use an ipset (source ipset="...") instead`)
-      return lines
+      out.todo = `TODO: "${bad}" is not an IP/CIDR — use an ipset (source ipset="...") instead`
+      return out
     }
     const proto = { TCP: 'tcp', UDP: 'udp', ICMP: 'icmp', ANY: '' }[r.protocol]
     const ports = splitPorts(r)
-    const target = r.direction === 'Inbound' ? `--zone=${r.zone.trim() || 'public'}` : `--policy ${slug(policyName)}-out`
+    const where = r.direction === 'Inbound' ? { zone: r.zone.trim() || 'public' } : { policy: policy! }
     for (const s of src.length ? src : [undefined]) {
       for (const d of dst.length ? dst : [undefined]) {
         for (const p of ports.length ? ports : [undefined]) {
-          const rule = [`rule priority="${(i + 1) * 10}"`]
-          if (s || d) rule.push('family="ipv4"')
-          if (s) rule.push(`source address="${s}"`)
-          if (d) rule.push(`destination address="${d}"`)
-          if (p) rule.push(`port port="${p}" protocol="${proto}"`)
-          else if (proto) rule.push(`protocol value="${proto}"`)
-          if (r.logging) rule.push(`log prefix="${r.name}: " level="info"`)
-          rule.push(act(r))
-          lines.push(`firewall-cmd${r.permanent ? ' --permanent' : ''} ${target} --add-rich-rule='${rule.join(' ')}'`)
+          const rich = [`rule priority="${(i + 1) * 10}"`]
+          if (s || d) rich.push('family="ipv4"')
+          if (s) rich.push(`source address="${s}"`)
+          if (d) rich.push(`destination address="${d}"`)
+          if (p) rich.push(`port port="${p}" protocol="${proto}"`)
+          else if (proto) rich.push(`protocol value="${proto}"`)
+          if (r.logging) rich.push(`log prefix="${r.name}: " level="info"`)
+          rich.push(act(r))
+          out.rules.push({ ...where, rich: rich.join(' ') })
         }
       }
+    }
+    return out
+  }
+
+  const items = live.map((r, i) => ({ r, item: item(r, i) }))
+  return {
+    policy,
+    perm: items.filter((x) => x.r.permanent).map((x) => x.item),
+    runtime: items.filter((x) => !x.r.permanent).map((x) => x.item),
+  }
+}
+
+const firewalld = (rules: Rule[], { policyName }: Options) => {
+  const { policy, perm, runtime } = firewalldPlan(rules, policyName)
+  const emit = (it: FwItem): string[] => {
+    const lines = [`# ${it.name}${it.runtimeOnly ? ' (runtime only)' : ''}`]
+    if (it.todo) return [...lines, `# ${it.todo}`]
+    for (const r of it.rules) {
+      const target = r.zone ? `--zone=${r.zone}` : `--policy ${r.policy}`
+      lines.push(`firewall-cmd${it.runtimeOnly ? '' : ' --permanent'} ${target} --add-rich-rule='${r.rich}'`)
     }
     return lines
   }
 
+  const lines: string[] = []
+  if (policy) {
+    lines.push(
+      '# firewalld zones only filter inbound traffic; outbound rules use a policy (HOST -> ANY)',
+      `firewall-cmd --permanent --new-policy ${policy}`,
+      `firewall-cmd --permanent --policy ${policy} --add-ingress-zone HOST`,
+      `firewall-cmd --permanent --policy ${policy} --add-egress-zone ANY`,
+      '',
+    )
+  }
   // A reload drops runtime-only rules, so permanent rules go first, then the reload, then runtime rules.
-  const perm = live.map((r, i) => ({ r, i })).filter((x) => x.r.permanent)
-  const runtime = live.map((r, i) => ({ r, i })).filter((x) => !x.r.permanent)
-  const lines: string[] = [...setup]
-  if (setup.length) lines.push('')
-  for (const { r, i } of perm) lines.push(...emit(r, i))
-  if (perm.length || setup.length) lines.push('', 'firewall-cmd --reload')
+  for (const it of perm) lines.push(...emit(it))
+  if (perm.length || policy) lines.push('', 'firewall-cmd --reload')
   if (runtime.length) {
     lines.push('', '# Runtime-only rules: lost on reload or reboot. Persist them with firewall-cmd --runtime-to-permanent', '')
-    for (const { r, i } of runtime) lines.push(...emit(r, i))
+    for (const it of runtime) lines.push(...emit(it))
   }
   return lines.join('\n') + '\n'
+}
+
+const yq = (s: string) => `'${s.replace(/'/g, "''")}'`
+
+const firewalldAnsible = (rules: Rule[], { policyName }: Options) => {
+  const { policy, perm, runtime } = firewalldPlan(rules, policyName)
+  const tasks: string[] = []
+  const cmdTask = (name: string, argv: string[], tolerate?: string) =>
+    [
+      `    - name: ${yq(name)}`,
+      '      ansible.builtin.command:',
+      `        argv: [${argv.map(yq).join(', ')}]`,
+      ...(tolerate
+        ? ['      register: result', `      failed_when: result.rc != 0 and ${yq(tolerate)} not in result.stderr`, '      changed_when: result.rc == 0']
+        : ['      changed_when: false']),
+    ].join('\n')
+  const emit = (it: FwItem) => {
+    if (it.todo) {
+      tasks.push(`    # ${it.name}: ${it.todo}`)
+      return
+    }
+    it.rules.forEach((r, n) => {
+      const label = `${it.name}${it.rules.length > 1 ? ` (${n + 1}/${it.rules.length})` : ''}`
+      if (r.zone) {
+        tasks.push(
+          [
+            `    - name: ${yq(label)}`,
+            '      ansible.posix.firewalld:',
+            `        zone: ${r.zone}`,
+            `        rich_rule: ${yq(r.rich)}`,
+            `        permanent: ${!it.runtimeOnly}`,
+            '        immediate: true',
+            '        state: enabled',
+          ].join('\n'),
+        )
+      } else {
+        // The firewalld module cannot target policies, so outbound rules call firewall-cmd directly.
+        tasks.push(cmdTask(label, ['firewall-cmd', ...(it.runtimeOnly ? [] : ['--permanent']), '--policy', r.policy!, '--add-rich-rule', r.rich]))
+      }
+    })
+  }
+
+  if (policy) {
+    tasks.push(cmdTask(`Create policy ${policy}`, ['firewall-cmd', '--permanent', '--new-policy', policy], 'NAME_CONFLICT'))
+    tasks.push(cmdTask('Policy ingress zone HOST', ['firewall-cmd', '--permanent', '--policy', policy, '--add-ingress-zone', 'HOST']))
+    tasks.push(cmdTask('Policy egress zone ANY', ['firewall-cmd', '--permanent', '--policy', policy, '--add-egress-zone', 'ANY']))
+  }
+  for (const it of perm) emit(it)
+  if (perm.length || policy) tasks.push(cmdTask('Reload firewalld (drops runtime-only rules)', ['firewall-cmd', '--reload']))
+  for (const it of runtime) emit(it)
+
+  return `---
+- name: ${yq(`${policyName} (firewalld)`)}
+  hosts: all
+  become: true
+  # Requires: ansible-galaxy collection install ansible.posix
+  tasks:
+${tasks.join('\n\n')}
+`
+}
+
+const iptablesAnsible = (rules: Rule[], { policyName }: Options) => {
+  const tasks: string[] = []
+  for (const r of active(rules)) {
+    const src = prefixes(r.source, 'nsx')
+    const dst = prefixes(r.destination, 'nsx')
+    const bad = [...src, ...dst].find((x) => !isIp(x))
+    if (bad) {
+      tasks.push(`    # ${r.name}: TODO "${bad}" is not an IP/CIDR — create an ipset and use match: set instead`)
+      continue
+    }
+    const ports = splitPorts(r).map((p) => p.replace('-', ':'))
+    const base = [`      chain: ${r.direction === 'Inbound' ? 'INPUT' : 'OUTPUT'}`]
+    if (src.length) base.push(`      source: ${yq(src.join(','))}`)
+    if (dst.length) base.push(`      destination: ${yq(dst.join(','))}`)
+    if (r.protocol !== 'ANY') base.push(`      protocol: ${r.protocol.toLowerCase()}`)
+    if (ports.length === 1) base.push(`      destination_port: ${yq(ports[0])}`)
+    else if (ports.length > 1) base.push(`      destination_ports: [${ports.map(yq).join(', ')}]`)
+    const task = (name: string, extra: string[]) =>
+      [`    - name: ${yq(name)}`, '      ansible.builtin.iptables:', ...base.map((l) => `  ${l}`), ...extra.map((l) => `        ${l}`)].join('\n')
+    if (r.logging) tasks.push(task(`${r.name} (log)`, [`comment: ${yq(r.name)}`, 'jump: LOG', `log_prefix: ${yq(`${r.name}: `)}`]))
+    tasks.push(task(r.name, [`comment: ${yq(r.name)}`, `jump: ${{ ALLOW: 'ACCEPT', DROP: 'DROP', REJECT: 'REJECT' }[r.action]}`]))
+  }
+  return `---
+- name: ${yq(`${policyName} (iptables)`)}
+  hosts: all
+  become: true
+  # Rules are appended in order. IPv4 only. Persist with the netfilter-persistent / iptables-services packages.
+  tasks:
+${tasks.join('\n\n')}
+`
+}
+
+const nftablesAnsible = (rules: Rule[], opts: Options) => {
+  const table = slug(opts.policyName).replace(/-/g, '_')
+  const body = nftables(rules, opts)
+    .split('\n')
+    .filter((l) => !l.startsWith('#!'))
+    .map((l) => (l ? `          ${l}` : ''))
+    .join('\n')
+  const dest = `/etc/nftables.d/${table}.nft`
+  return `---
+- name: ${yq(`${opts.policyName} (nftables)`)}
+  hosts: all
+  become: true
+  # Include the directory from /etc/nftables.conf:  include "/etc/nftables.d/*.nft"
+  tasks:
+    - name: Ensure /etc/nftables.d exists
+      ansible.builtin.file:
+        path: /etc/nftables.d
+        state: directory
+        mode: '0755'
+
+    - name: Install ruleset
+      ansible.builtin.copy:
+        dest: ${dest}
+        mode: '0644'
+        validate: nft -c -f %s
+        content: |
+          add table inet ${table}
+          flush table inet ${table}
+${body}
+      notify: Reload nftables
+
+  handlers:
+    - name: Reload nftables
+      ansible.builtin.command: nft -f ${dest}
+`
 }
 
 const wildcard = (cidr: string): string => {
@@ -524,16 +682,136 @@ resource ${nsg} 'Microsoft.AzureStackHCI/networkSecurityGroups@2025-09-01-previe
 ${body.join('\n')}`
 }
 
+const nsxPs = (rules: Rule[], { policyName }: Options) => {
+  const id = slug(policyName)
+  const nsxRules = active(rules).map((r, i) => {
+    const src = prefixes(r.source, 'nsx')
+    const dst = prefixes(r.destination, 'nsx')
+    const svc = SERVICES[r.service]
+    const ports = splitPorts(r)
+    const rule: Record<string, unknown> = {
+      id: slug(r.name),
+      display_name: r.name,
+      sequence_number: (i + 1) * 10,
+      action: r.action,
+      direction: r.direction === 'Inbound' ? 'IN' : 'OUT',
+      source_groups: src.length ? src : ['ANY'],
+      destination_groups: dst.length ? dst : ['ANY'],
+      scope: r.scope.trim() ? r.scope.split(/\s*,\s*/) : ['ANY'],
+      logged: r.logging,
+    }
+    if (svc?.nsx) {
+      rule.services = [`/infra/services/${svc.nsx}`]
+    } else if (r.protocol === 'ICMP') {
+      rule.services = ['/infra/services/ICMP-ALL']
+    } else if (r.protocol !== 'ANY' && ports.length) {
+      rule.services = ['ANY']
+      rule.service_entries = [
+        { resource_type: 'L4PortSetServiceEntry', display_name: `${r.protocol.toLowerCase()}-${ports.join('_')}`, l4_protocol: r.protocol, destination_ports: ports },
+      ]
+    } else {
+      rule.services = ['ANY']
+    }
+    if (r.notes.trim()) rule.notes = r.notes.trim()
+    return rule
+  })
+  const body = JSON.stringify({ display_name: policyName, category: 'Application', rules: nsxRules }, null, 2)
+  return `$nsx  = 'https://<nsx-manager>'
+$cred = Get-Credential
+
+$body = @'
+${body}
+'@
+
+# PATCH creates or updates the whole policy in one call (idempotent).
+Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/infra/domains/default/security-policies/${id}" \`
+  -Credential $cred -ContentType 'application/json' -Body $body -SkipCertificateCheck
+`
+}
+
+const panos1 = (rules: Rule[], { policyName }: Options) => {
+  const list = (a: string[]) => `[${a.map((x) => `"${x}"`).join(', ')}]`
+  const addr = (v: string) => {
+    const p = prefixes(v, 'nsx')
+    return p.length ? p : ['any']
+  }
+  const zones = (v: string) => (v.trim() ? v.split(/\s*,\s*/) : ['any'])
+  const svcs = new Map<string, { proto: string; port: string }>()
+  const svcRefs = (r: Rule): string[] => {
+    if (r.protocol === 'ICMP') return ['any']
+    const ports = splitPorts(r)
+    if (!ports.length) return ['any']
+    return ports.map((p) => {
+      const proto = r.protocol === 'ANY' ? 'tcp' : r.protocol.toLowerCase()
+      const name = `${proto}-${p}`
+      svcs.set(name, { proto, port: p })
+      return name
+    })
+  }
+  const apps = (r: Rule) => (r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])
+
+  const body = active(rules).map((r) => {
+    const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
+    const bad = [...addr(r.source), ...addr(r.destination)].filter((x) => x !== 'any' && !isIp(x))
+    const lines = [
+      `    name                  = "${r.name}"`,
+      `    source_zones          = ${list(zones(r.srcZone))}`,
+      `    source_addresses      = ${list(addr(r.source))}`,
+      '    source_users          = ["any"]',
+      `    destination_zones     = ${list(zones(r.dstZone))}`,
+      `    destination_addresses = ${list(addr(r.destination))}`,
+      `    applications          = ${list(apps(r))}`,
+      `    services              = [${svcRefs(r).map((n) => (svcs.has(n) ? `panos_service_object.${n}.name` : `"${n}"`)).join(', ')}]`,
+      '    categories            = ["any"]',
+      `    action                = "${act}"`,
+      `    log_end               = ${r.logging}`,
+    ]
+    if (r.notes.trim()) lines.push(`    description           = "${r.notes.trim()}"`)
+    const note = bad.length ? `    # TODO: ${bad.map((b) => `"${b}"`).join(', ')} must exist as a panos_address_object / address group\n` : ''
+    return `\n  rule {\n${note}${lines.join('\n')}\n  }`
+  })
+
+  const objs = [...svcs.entries()].map(
+    ([name, s]) => `resource "panos_service_object" "${name}" {
+  name             = "${name}"
+  protocol         = "${s.proto}"
+  destination_port = "${s.port}"
+}
+`,
+  )
+  return `terraform {
+  required_providers {
+    panos = {
+      source  = "PaloAltoNetworks/panos"
+      version = "~> 1.11"
+    }
+  }
+}
+
+${objs.join('\n')}${objs.length ? '\n' : ''}resource "panos_security_rule_group" "${slug(policyName).replace(/-/g, '_')}" {
+  position_keyword = "bottom"
+${body.join('\n')}
+}
+`
+}
+
 export const TARGETS: Target[] = [
-  { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
-  { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
-  { id: 'azl-nsg', label: 'Azure Local NSG', hint: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
-  { id: 'azl-bicep', label: 'Azure Local NSG', hint: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },
-  { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
-  { id: 'nftables', label: 'nftables', hint: 'Linux', filename: 'rules.nft', generate: nftables },
-  { id: 'iptables', label: 'iptables', hint: 'Linux (legacy)', filename: 'iptables.sh', generate: iptables },
-  { id: 'firewalld', label: 'firewalld', hint: 'RHEL / Fedora', filename: 'firewalld.sh', generate: firewalld },
-  { id: 'cisco', label: 'Cisco ACL', hint: 'IOS extended', filename: 'acl.ios', generate: cisco },
-  { id: 'fmc', label: 'Cisco FMC', hint: 'Terraform (fmc 2.x)', filename: 'fmc.tf', generate: fmc },
-  { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos 2.x)', filename: 'panos.tf', generate: panos },
+  { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
+  { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell', filename: 'nsx-policy.ps1', generate: nsxPs },
+  { id: 'sdn-ps', platform: 'sdn', label: 'SDN ACL', format: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
+  { id: 'azl-nsg', platform: 'azl', label: 'Azure Local NSG', format: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
+  { id: 'azl-bicep', platform: 'azl', label: 'Azure Local NSG', format: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },
+  { id: 'windows', platform: 'windows', label: 'Windows Firewall', format: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
+  { id: 'nftables', platform: 'nftables', label: 'nftables', format: 'nft', filename: 'rules.nft', generate: nftables },
+  { id: 'nftables-ansible', platform: 'nftables', label: 'nftables', format: 'Ansible', filename: 'nftables.yml', generate: nftablesAnsible },
+  { id: 'iptables', platform: 'iptables', label: 'iptables', format: 'Shell', filename: 'iptables.sh', generate: iptables },
+  { id: 'iptables-ansible', platform: 'iptables', label: 'iptables', format: 'Ansible', filename: 'iptables.yml', generate: iptablesAnsible },
+  { id: 'firewalld', platform: 'firewalld', label: 'firewalld', format: 'Shell', filename: 'firewalld.sh', generate: firewalld },
+  { id: 'firewalld-ansible', platform: 'firewalld', label: 'firewalld', format: 'Ansible', filename: 'firewalld.yml', generate: firewalldAnsible },
+  { id: 'cisco', platform: 'cisco', label: 'Cisco ACL', format: 'IOS', filename: 'acl.ios', generate: cisco },
+  { id: 'fmc', platform: 'fmc', label: 'Cisco FMC', format: 'Terraform', filename: 'fmc.tf', generate: fmc },
+  { id: 'panos', platform: 'panos', label: 'Palo Alto', format: 'Terraform 2.x', filename: 'panos.tf', generate: panos },
+  { id: 'panos-1x', platform: 'panos', label: 'Palo Alto', format: 'Terraform 1.x', filename: 'panos-1x.tf', generate: panos1 },
 ]
+
+export const PLATFORMS = TARGETS.filter((t, i) => TARGETS.findIndex((x) => x.platform === t.platform) === i).map((t) => ({ platform: t.platform, label: t.label }))
