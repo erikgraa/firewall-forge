@@ -138,3 +138,5 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 
 .inline-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; padding-bottom: 6px; }
 .inline-switch .switch { margin-left: 0; }
+
+.notice { background: #22c55e1a; border: 1px solid #22c55e55; padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; }

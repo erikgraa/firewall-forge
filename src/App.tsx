@@ -3,6 +3,7 @@ import { TARGETS } from './generators'
 import { highlight } from './highlight'
 import { parseCsv } from './csv'
 import { validate } from './validate'
+import { decodeState, shareUrl } from './share'
 import { CUSTOM, ENDPOINTS, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
 import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
@@ -10,6 +11,7 @@ import type { Rule, TargetId } from './model'
 import './App.css'
 
 const STORAGE = 'fwgen.v2'
+let hashHandled = false
 
 interface Saved {
   rules: Rule[]
@@ -42,6 +44,24 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
   const [copied, setCopied] = useState(false)
+  const [shared, setShared] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (hashHandled || !location.hash.startsWith('#s=')) return
+    hashHandled = true
+    const fragment = location.hash
+    const hadSaved = localStorage.getItem(STORAGE) !== null
+    history.replaceState(null, '', location.pathname + location.search)
+    void decodeState(fragment).then((state) => {
+      if (!state) return setShared('That share link could not be read.')
+      if (hadSaved && !window.confirm('Open the shared rules? This replaces the rules currently saved in this browser.')) return
+      setRules(state.rules)
+      setTarget(TARGETS.some((t) => t.id === state.target) ? state.target : 'nsx')
+      setPolicyName(state.policyName)
+      setPermanent(state.permanent)
+      setShared('Shared rules loaded.')
+    })
+  }, [])
 
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, permanent }))
@@ -51,7 +71,7 @@ export default function App() {
   const extras = EXTRA_COLUMNS[target]
   const gridCols = `${BASE_COLS} ${extras.map((k) => COLUMNS[k].width).join(' ')} 118px`.replace(/\s+/g, ' ')
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
-  const issues = useMemo(() => validate(rules), [rules])
+  const issues = useMemo(() => validate(rules, target), [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
   const code = useMemo(() => current.generate(rules, { policyName, permanent }), [current, rules, policyName, permanent])
   const html = useMemo(() => highlight(code), [code])
@@ -78,6 +98,12 @@ export default function App() {
     await navigator.clipboard.writeText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1400)
+  }
+  const share = async () => {
+    const url = await shareUrl({ rules, target, policyName, permanent })
+    await navigator.clipboard.writeText(url)
+    setShared(url.length > 2000 ? `Link copied (${url.length} chars — very long, some apps may truncate it).` : 'Share link copied ✓')
+    setTimeout(() => setShared(null), 3500)
   }
   const download = () => {
     const url = URL.createObjectURL(new Blob([code], { type: 'text/plain' }))
@@ -231,10 +257,12 @@ export default function App() {
               </label>
             )}
             <div className="actions">
+              <button className="ghost" onClick={share}>Share link</button>
               <button className="ghost" onClick={download}>Download {current.filename}</button>
               <button className="primary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
             </div>
           </div>
+          {shared && <div className="notice">{shared}</div>}
           {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
           <pre className="code" dangerouslySetInnerHTML={{ __html: html }} />
         </section>

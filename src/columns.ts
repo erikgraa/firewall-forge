@@ -28,6 +28,8 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   windows: ['profile', 'program'],
   firewalld: ['zone', 'logging'],
   cisco: ['logging'],
+  nftables: ['logging'],
+  iptables: ['logging'],
   panos: ['srcZone', 'dstZone', 'logging', 'notes'],
 }
 

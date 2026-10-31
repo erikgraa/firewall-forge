@@ -332,12 +332,83 @@ ${body.join('\n')}
 `
 }
 
+const nftSet = (items: string[]) => (items.length === 1 ? items[0] : `{ ${items.join(', ')} }`)
+
+const nftables = (rules: Rule[], { policyName }: Options) => {
+  const table = slug(policyName).replace(/-/g, '_')
+  const chains: Record<'Inbound' | 'Outbound', string[]> = { Inbound: [], Outbound: [] }
+
+  for (const r of active(rules)) {
+    const src = prefixes(r.source, 'nsx')
+    const dst = prefixes(r.destination, 'nsx')
+    const bad = [...src, ...dst].find((x) => !isIp(x))
+    const out = chains[r.direction]
+    if (bad) {
+      out.push(`    # ${r.name}: TODO "${bad}" is not an IP/CIDR — define a named set and use @set instead`)
+      continue
+    }
+    const ports = splitPorts(r)
+    const parts: string[] = []
+    if (src.length) parts.push(`ip saddr ${nftSet(src)}`)
+    if (dst.length) parts.push(`ip daddr ${nftSet(dst)}`)
+    if (r.protocol === 'ICMP') parts.push('ip protocol icmp')
+    else if (r.protocol !== 'ANY') parts.push(ports.length ? `${r.protocol.toLowerCase()} dport ${nftSet(ports)}` : `meta l4proto ${r.protocol.toLowerCase()}`)
+    if (r.logging) parts.push(`log prefix "${r.name}: "`)
+    parts.push({ ALLOW: 'accept', DROP: 'drop', REJECT: 'reject' }[r.action])
+    parts.push(`comment "${r.name}"`)
+    out.push(`    ${parts.join(' ')}`)
+  }
+
+  const chain = (name: string, hook: string, body: string[]) =>
+    `  chain ${name} {\n    type filter hook ${hook} priority filter; policy accept;\n${body.join('\n')}${body.length ? '\n' : ''}  }`
+
+  return `#!/usr/sbin/nft -f
+# Chains default to "policy accept"; end with an explicit drop rule for a default-deny stance.
+
+table inet ${table} {
+${chain('input', 'input', chains.Inbound)}
+
+${chain('output', 'output', chains.Outbound)}
+}
+`
+}
+
+const iptables = (rules: Rule[]) => {
+  const lines: string[] = []
+  for (const r of active(rules)) {
+    const src = prefixes(r.source, 'nsx')
+    const dst = prefixes(r.destination, 'nsx')
+    const bad = [...src, ...dst].find((x) => !isIp(x))
+    lines.push(`# ${r.name}`)
+    if (bad) {
+      lines.push(`# TODO: "${bad}" is not an IP/CIDR — create an ipset and use -m set --match-set`)
+      continue
+    }
+    const chain = r.direction === 'Inbound' ? 'INPUT' : 'OUTPUT'
+    const ports = splitPorts(r).map((p) => p.replace('-', ':'))
+    const base = [`iptables -A ${chain}`]
+    if (src.length) base.push(`-s ${src.join(',')}`)
+    if (dst.length) base.push(`-d ${dst.join(',')}`)
+    if (r.protocol !== 'ANY') base.push(`-p ${r.protocol.toLowerCase()}`)
+    if (ports.length === 1) base.push(`--dport ${ports[0]}`)
+    else if (ports.length > 1) base.push(`-m multiport --dports ${ports.join(',')}`)
+    const comment = `-m comment --comment "${r.name}"`
+    const target = { ALLOW: 'ACCEPT', DROP: 'DROP', REJECT: 'REJECT' }[r.action]
+    if (r.logging) lines.push([...base, comment, `-j LOG --log-prefix "${r.name}: "`].join(' '))
+    lines.push([...base, comment, `-j ${target}`].join(' '))
+  }
+  lines.push('', '# IPv4 only. Persist with iptables-save (e.g. via iptables-persistent / netfilter-persistent).')
+  return lines.join('\n') + '\n'
+}
+
 export const TARGETS: Target[] = [
   { id: 'nsx', label: 'NSX DFW', hint: 'Terraform (vmware/nsxt)', filename: 'main.tf', generate: nsx },
   { id: 'sdn-ps', label: 'SDN ACL', hint: 'PowerShell', filename: 'sdn-acl.ps1', generate: sdnPs },
   { id: 'sdn-json', label: 'SDN ACL', hint: 'REST JSON', filename: 'sdn-acl.json', generate: sdnJson },
   { id: 'azl-nsg', label: 'Azure Local NSG', hint: 'az CLI', filename: 'azl-nsg.ps1', generate: azl },
   { id: 'windows', label: 'Windows Firewall', hint: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
+  { id: 'nftables', label: 'nftables', hint: 'Linux', filename: 'rules.nft', generate: nftables },
+  { id: 'iptables', label: 'iptables', hint: 'Linux (legacy)', filename: 'iptables.sh', generate: iptables },
   { id: 'firewalld', label: 'firewalld', hint: 'RHEL / Fedora', filename: 'firewalld.sh', generate: firewalld },
   { id: 'cisco', label: 'Cisco ACL', hint: 'IOS extended', filename: 'acl.ios', generate: cisco },
   { id: 'panos', label: 'Palo Alto', hint: 'Terraform (panos 2.x)', filename: 'panos.tf', generate: panos },

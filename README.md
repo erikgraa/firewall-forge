@@ -22,6 +22,8 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies |
 | 🌐 | Cisco ACL | IOS extended access lists |
+| 🐧 | nftables | `nft -f` ruleset (`table inet`) |
+| 🐧 | iptables (legacy) | `iptables -A` commands |
 | 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`, `panos_service`) |
 
 ## ✨ Features
@@ -32,12 +34,15 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
 - 📥 CSV / spreadsheet import, 📋 copy and 💾 download of the generated output
 - 🗂️ Rules are saved in your browser's local storage
+- 🔗 Share link: the whole rule set is compressed into the URL hash (nothing is uploaded)
+- ⚠️ Per-target warnings, e.g. no reject on Windows/Cisco, Windows block-before-allow, default-accept chains
 
 ## 🛠️ Develop
 
 ```sh
 npm install
 npm run dev     # 🚀 dev server
+npm test        # 🧪 vitest: generator snapshots and unit tests
 npm run build   # 📦 type-check and production build
 ```
 
@@ -45,18 +50,18 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 
 ## 🗺️ Roadmap / TODO
 
-- [ ] 🐧 nftables output
-- [ ] 🐧 iptables output
+- [x] 🐧 nftables output
+- [x] 🐧 iptables output
 - [ ] 😈 FreeBSD ipfw output
 - [ ] 🐡 pf output (FreeBSD / OpenBSD / OPNsense / pfSense)
 - [ ] ☁️ AWS security groups and Azure NSGs (Terraform)
 - [ ] ☸️ Kubernetes NetworkPolicy / Cilium
-- [ ] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)
+- [x] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)
 - [ ] 🔄 Reverse import from `iptables-save`, `nft list ruleset` and NSX JSON
-- [ ] 🔗 Shareable links (rules encoded in the URL hash)
+- [x] 🔗 Shareable links (rules encoded in the URL hash)
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
-- [ ] 🧪 Unit tests for the generators
+- [x] 🧪 Unit tests for the generators
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld and Cisco systems
 
 ## ⚠️ Caveats
