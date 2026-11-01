@@ -1,0 +1,8 @@
+{
+  "nsxt": { "source": "vmware/nsxt", "name": "nsxt", "major": 3, "version": "3.12" },
+  "azurerm": { "source": "hashicorp/azurerm", "name": "azurerm", "major": 5, "version": "5.12" },
+  "fmc": { "source": "CiscoDevNet/fmc", "name": "fmc", "major": 2, "version": "2.6" },
+  "iosxe": { "source": "CiscoDevNet/iosxe", "name": "iosxe", "major": 1, "version": "1.1" },
+  "panos2": { "source": "PaloAltoNetworks/panos", "name": "panos", "major": 2, "version": "2.0" },
+  "panos1": { "source": "PaloAltoNetworks/panos", "name": "panos", "major": 1, "version": "1.11" }
+}
