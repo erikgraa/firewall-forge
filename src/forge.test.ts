@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv } from './csv'
+import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
+import { EXTRA_COLUMNS } from './columns'
 import { TARGETS } from './generators'
 import { blankRule, sampleRules } from './model'
 import type { Rule } from './model'
@@ -258,8 +259,51 @@ describe('csv import', () => {
     expect(rules[0].ports).toBe('443')
     expect(rules[1]).toMatchObject({ protocol: 'TCP', ports: '445', action: 'DROP', direction: 'Outbound' })
   })
-})
+  it('exports CSV that imports back to the same rules, including quoted values', () => {
+    const rules = [
+      rule({ name: 'web', source: 'Private networks (RFC1918)', destination: '10.1.1.0/24', service: 'HTTPS (TCP 443)', ports: '443' }),
+      rule({ name: 'dns', destination: 'Public DNS (1.1.1.1, 8.8.8.8)', service: 'DNS (UDP 53)', protocol: 'UDP', ports: '53', direction: 'Outbound' }),
+      rule({ name: 'smb', service: 'Custom', protocol: 'TCP', ports: '445,139', action: 'DROP' }),
+    ]
+    const text = toCsv(rules)
+    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction')
+    expect(text).toContain('"Public DNS (1.1.1.1, 8.8.8.8)"')
+    const back = parseCsv(text)
+    expect(back).toHaveLength(3)
+    expect(back.map((r) => [r.name, r.source, r.destination, r.service, r.protocol, r.ports, r.action, r.direction])).toEqual(
+      rules.map((r) => [r.name, r.source, r.destination, r.service, r.protocol, r.ports, r.action, r.direction]),
+    )
+  })
 
+  it('each target gets its own columns, and its example round-trips', () => {
+    expect(csvColumns(EXTRA_COLUMNS['azl-nsg']).join()).toBe('name,source,destination,service,ports,action,direction,priority')
+    expect(csvColumns(EXTRA_COLUMNS.nsx).join()).toBe('name,source,destination,service,ports,action,direction,scope,logging,notes')
+    expect(csvColumns(EXTRA_COLUMNS.firewalld)).toContain('permanent')
+    for (const t of TARGETS) {
+      const extras = EXTRA_COLUMNS[t.id]
+      expect(parseCsv(csvExample(extras), extras)).toHaveLength(3)
+    }
+  })
+
+  it('exports and re-imports per-target options', () => {
+    const extras = EXTRA_COLUMNS.firewalld
+    const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1', zone: 'dmz', permanent: false, logging: true })]
+    const text = toCsv(rules, extras)
+    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction,zone,permanent,logging')
+    const [back] = parseCsv(text, extras)
+    expect(back).toMatchObject({ zone: 'dmz', permanent: false, logging: true })
+  })
+
+  it('matches header columns by name in any order and ignores unknown columns', () => {
+    const [r] = parseCsv('direction,bogus,name,priority,action,destination,source,service,ports\nOutbound,x,r1,250,drop,10.1.1.1,Any,TCP,8080')
+    expect(r).toMatchObject({ name: 'r1', priority: '250', action: 'DROP', direction: 'Outbound', destination: '10.1.1.1', protocol: 'TCP', ports: '8080' })
+  })
+
+  it('reads headerless rows positionally using the target columns', () => {
+    const [r] = parseCsv('r1,Any,Any,TCP,22,ALLOW,Inbound,110', EXTRA_COLUMNS['azl-nsg'])
+    expect(r).toMatchObject({ name: 'r1', ports: '22', priority: '110' })
+  })
+})
 describe('share links', () => {
   it('round-trips state and keeps links short', async () => {
     const rules = sampleRules()

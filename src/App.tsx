@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PLATFORMS, TARGETS } from './generators'
 import { highlight } from './highlight'
-import { parseCsv } from './csv'
+import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
 import { CUSTOM, ENDPOINTS, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
@@ -74,6 +74,7 @@ export default function App() {
   }
   const extras = EXTRA_COLUMNS[target]
   const gridCols = `${BASE_COLS} ${extras.map((k) => COLUMNS[k].width).join(' ')} 118px`.replace(/\s+/g, ' ')
+  const example = csvExample(extras)
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
   const issues = useMemo(() => validate(rules, target), [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
@@ -115,8 +116,15 @@ export default function App() {
     a.click()
     URL.revokeObjectURL(url)
   }
+  const saveFile = (text: string, filename: string, type = 'text/plain') => {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: filename })
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportCsv = () => saveFile(toCsv(rules, extras), `firewall-rules-${target}.csv`, 'text/csv')
   const doImport = () => {
-    const parsed = parseCsv(csv)
+    const parsed = parseCsv(csv, extras)
     if (parsed.length) setRules((rs) => [...rs, ...parsed])
     setCsv('')
     setImportOpen(false)
@@ -177,6 +185,7 @@ export default function App() {
             <h2>Rules <span className="count">{rules.length}</span></h2>
             <div className="actions">
               <button className="ghost" onClick={() => setImportOpen(true)}>Import CSV</button>
+              <button className="ghost" onClick={exportCsv} disabled={rules.length === 0}>Export CSV</button>
               <button className="ghost" onClick={() => setRules(sampleRules())}>Reset</button>
               <button className="primary" onClick={() => setRules((rs) => [...rs, { ...blankRule(), name: `rule-${rs.length + 1}` }])}>
                 + Add rule
@@ -294,14 +303,24 @@ export default function App() {
       {importOpen && (
         <div className="modal" onClick={() => setImportOpen(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Import rules from CSV</h3>
-            <p>Columns: <code>name, source, destination, service-or-protocol, ports, action, direction</code>. Paste straight from a spreadsheet (tab-separated works too).</p>
+            <h3>Import rules from CSV — {current.label} ({current.format})</h3>
+            <p>
+              The columns follow the selected target: <code>{csvColumns(extras).join(', ')}</code>. Switch platform or format to get that target's columns. Paste straight from a spreadsheet (tab-separated works too).
+              If the first row is a header, columns are matched by name in any order and unknown columns are ignored; without a header they are read in the order above.
+            </p>
+            <p>
+              <b>service</b> is a well-known service (e.g. <code>HTTPS (TCP 443)</code>) or a protocol (<code>TCP</code>, <code>UDP</code>, <code>ICMP</code>, <code>ANY</code>) with <b>ports</b> filled in.
+              <b> source</b> / <b>destination</b> accept <code>Any</code>, a well-known endpoint, or comma-separated CIDRs. <b>action</b> is ALLOW, DROP or REJECT; <b>direction</b> is Inbound or Outbound; switches such as <b>logging</b> take true/false.
+            </p>
             <textarea
               value={csv}
               onChange={(e) => setCsv(e.target.value)}
-              placeholder={'app-in,10.0.0.0/24,web-grp,HTTPS (TCP 443),,ALLOW,Inbound\nblock-smb,Any,Any,TCP,445,DROP,Inbound'}
+              placeholder={example}
             />
             <div className="actions">
+              <button className="ghost" onClick={() => setCsv(example)}>Insert example</button>
+              <button className="ghost" onClick={() => saveFile(example + '\n', `firewall-rules-template-${target}.csv`, 'text/csv')}>Download template</button>
+              <span className="spacer" />
               <button className="ghost" onClick={() => setImportOpen(false)}>Cancel</button>
               <button className="primary" onClick={doImport} disabled={!csv.trim()}>Import</button>
             </div>
