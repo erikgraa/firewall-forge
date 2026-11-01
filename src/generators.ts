@@ -12,6 +12,7 @@ export interface Target {
 
 export interface Options {
   policyName: string
+  nsxProject?: string
 }
 
 const prefixes = (value: string, key: 'nsx' | 'net'): string[] => {
@@ -27,7 +28,8 @@ const active = (rules: Rule[]) => rules.filter((r) => r.enabled)
 const prio = (r: Rule, i: number) => Number(r.priority) || 100 + (i + 1) * 10
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'rules'
 
-const nsx = (rules: Rule[], { policyName }: Options) => {
+const nsx = (rules: Rule[], { policyName, nsxProject }: Options) => {
+  const project = nsxProject?.trim()
   const body = active(rules).map((r, i) => {
     const lines = [
       `    display_name       = "${r.name}"`,
@@ -48,10 +50,12 @@ const nsx = (rules: Rule[], { policyName }: Options) => {
     lines.push(`    sequence_number    = ${(i + 1) * 10}`)
     return `\n  rule {\n${lines.join('\n')}\n  }`
   })
-  return `resource "nsxt_policy_security_policy" "${slug(policyName)}" {
+  const projectData = project ? `data "nsxt_policy_project" "project" {\n  id = "${project}"\n}\n\n` : ''
+  const context = project ? '\n  context {\n    project_id = data.nsxt_policy_project.project.id\n  }\n' : ''
+  return `${projectData}resource "nsxt_policy_security_policy" "${slug(policyName)}" {
   display_name = "${policyName}"
   category     = "Application"
-${body.join('\n')}
+${context}${body.join('\n')}
 }
 `
 }
@@ -715,7 +719,9 @@ const nsxRuleModels = (rules: Rule[]) =>
     return rule
   })
 
-const nsxPs = (rules: Rule[], { policyName }: Options) => {
+const nsxPs = (rules: Rule[], { policyName, nsxProject }: Options) => {
+  const project = nsxProject?.trim()
+  const base = project ? `orgs/default/projects/${project}/infra` : 'infra'
   const id = slug(policyName)
   const body = JSON.stringify({ display_name: policyName, category: 'Application', rules: nsxRuleModels(rules) }, null, 2)
   return `$nsx  = 'https://<nsx-manager>'
@@ -726,12 +732,13 @@ ${body}
 '@
 
 # PATCH creates or updates the whole policy in one call (idempotent).
-Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/infra/domains/default/security-policies/${id}" \`
+Invoke-RestMethod -Method Patch -Uri "$nsx/policy/api/v1/${base}/domains/default/security-policies/${id}" \`
   -Credential $cred -ContentType 'application/json' -Body $body -SkipCertificateCheck
 `
 }
 
-const nsxSdk = (rules: Rule[], { policyName }: Options) => {
+const nsxSdk = (rules: Rule[], { policyName, nsxProject }: Options) => {
+  const project = nsxProject?.trim()
   const ps = (a: unknown) => `@(${(a as string[]).map((x) => `'${x.replace(/'/g, "''")}'`).join(', ')})`
   const q = (s: string) => `'${s.replace(/'/g, "''")}'`
   const blocks = nsxRuleModels(rules).map((m, i) => {
@@ -766,7 +773,7 @@ ${blocks.join('\n\n')}
 $policy = Initialize-SecurityPolicy -Id ${q(slug(policyName))} -DisplayName ${q(policyName)} -Category 'Application' -Rules $rules
 
 # PATCH creates or updates the whole policy in one call (idempotent).
-Invoke-PatchSecurityPolicyForDomain -DomainId 'default' -SecurityPolicyId ${q(slug(policyName))} -SecurityPolicy $policy
+${project ? `Invoke-OrgsOrgIdProjectsProjectIdInfraPatchSecurityPolicyForDomain -OrgId 'default' -ProjectId ${q(project)} -DomainId 'default'` : "Invoke-PatchSecurityPolicyForDomain -DomainId 'default'"} -SecurityPolicyId ${q(slug(policyName))} -SecurityPolicy $policy
 `
 }
 
