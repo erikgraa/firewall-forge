@@ -280,7 +280,16 @@ export default function App() {
         </section>
       </main>
 
-      <footer>Generated code is a starting point — review against your provider / API versions before applying.</footer>
+      <footer>
+        <p className="disclaimer">
+          <strong>Community-driven, unofficial tool.</strong> Firewall Forge is an independent open-source project and is <strong>not affiliated with, endorsed by, or supported by any vendor</strong>.
+          VMware, NSX, Broadcom, Microsoft, Azure, Windows, Cisco, Palo Alto Networks, Red Hat and all other product names and trademarks belong to their respective owners and are used for identification only.
+        </p>
+        <p>Generated code is a starting point, provided as is without warranty — review it against your provider / API versions and test before applying to production.</p>
+        <p>
+          <a href="https://github.com/erikgraa/firewall-forge" target="_blank" rel="noreferrer">Source on GitHub</a>
+        </p>
+      </footer>
 
       {importOpen && (
         <div className="modal" onClick={() => setImportOpen(false)}>
