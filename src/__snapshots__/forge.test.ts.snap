@@ -64,7 +64,16 @@ resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024
 `;
 
 exports[`generators (snapshots) > azfw-tf output is stable 1`] = `
-"variable "firewall_policy_id" {
+"terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 5.12"
+    }
+  }
+}
+
+variable "firewall_policy_id" {
   type        = string
   description = "ID of the existing azurerm_firewall_policy"
 }
@@ -306,7 +315,7 @@ exports[`generators (snapshots) > cisco-tf output is stable 1`] = `
   required_providers {
     iosxe = {
       source  = "CiscoDevNet/iosxe"
-      version = "~> 1.0"
+      version = "~> 1.1"
     }
   }
 }
@@ -497,7 +506,7 @@ exports[`generators (snapshots) > fmc output is stable 1`] = `
   required_providers {
     fmc = {
       source  = "CiscoDevNet/fmc"
-      version = "~> 2.0"
+      version = "~> 2.6"
     }
   }
 }
@@ -659,7 +668,16 @@ exports[`generators (snapshots) > nftables-ansible output is stable 1`] = `
 `;
 
 exports[`generators (snapshots) > nsx output is stable 1`] = `
-"resource "nsxt_policy_security_policy" "generated" {
+"terraform {
+  required_providers {
+    nsxt = {
+      source  = "vmware/nsxt"
+      version = "~> 3.12"
+    }
+  }
+}
+
+resource "nsxt_policy_security_policy" "generated" {
   display_name = "generated"
   category     = "Application"
 

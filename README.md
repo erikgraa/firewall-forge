@@ -50,9 +50,12 @@ npm install
 npm run dev     # 🚀 dev server
 npm test        # 🧪 vitest: generator snapshots and unit tests
 npm run build   # 📦 type-check and production build
+npm run update-providers   # 🔄 refresh Terraform provider versions from the registry
 ```
 
 Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
+
+🔄 **Provider versions stay current:** every Terraform output declares `required_providers` from `src/providers.json`. The Pages workflow runs `scripts/update-providers.mjs` before each build (and weekly on a schedule) to bump each provider to its latest release within the major version we generate for; if the registry is unreachable the committed versions are used. A new *major* version needs a manual update. Dependabot keeps npm packages and GitHub Actions up to date.
 
 ## 🗺️ Roadmap / TODO
 

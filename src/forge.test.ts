@@ -3,6 +3,8 @@ import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
 import { EXTRA_COLUMNS } from './columns'
 import { jsonExample, parseJson, toJson } from './json'
 import { TARGETS } from './generators'
+import providers from './providers.json'
+import { requiredProviders } from './providers'
 import { blankRule, sampleRules } from './model'
 import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
@@ -224,6 +226,16 @@ describe('generators (behaviour)', () => {
     expect(out('nsx-ps', rules)).toContain('/policy/api/v1/infra/domains/default/')
     expect(out('nsx-sdk', rules, withProject)).toContain("Invoke-OrgsOrgIdProjectsProjectIdInfraPatchSecurityPolicyForDomain -OrgId 'default' -ProjectId 'proj-1' -DomainId 'default'")
     expect(out('nsx-sdk', rules)).toContain("Invoke-PatchSecurityPolicyForDomain -DomainId 'default'")
+  })
+
+  it('every Terraform target declares required_providers from providers.json', () => {
+    for (const id of ['nsx', 'azfw-tf', 'fmc', 'cisco-tf', 'panos', 'panos-1x']) {
+      expect(out(id), id).toMatch(/required_providers \{[\s\S]*version = "~> \d+\.\d+"/)
+    }
+    for (const [key, p] of Object.entries(providers)) {
+      expect(p.version.startsWith(`${p.major}.`), key).toBe(true)
+      expect(requiredProviders(key as keyof typeof providers)).toContain(`source  = "${p.source}"`)
+    }
   })
 
   it('panos creates service objects and references them', () => {

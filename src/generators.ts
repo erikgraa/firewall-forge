@@ -1,4 +1,5 @@
 import { ENDPOINTS, SERVICES } from './model'
+import { requiredProviders } from './providers'
 import type { Rule, TargetId } from './model'
 
 export interface Target {
@@ -52,7 +53,8 @@ const nsx = (rules: Rule[], { policyName, nsxProject }: Options) => {
   })
   const projectData = project ? `data "nsxt_policy_project" "project" {\n  id = "${project}"\n}\n\n` : ''
   const context = project ? '\n  context {\n    project_id = data.nsxt_policy_project.project.id\n  }\n' : ''
-  return `${projectData}resource "nsxt_policy_security_policy" "${slug(policyName)}" {
+  return `${requiredProviders('nsxt')}
+${projectData}resource "nsxt_policy_security_policy" "${slug(policyName)}" {
   display_name = "${policyName}"
   category     = "Application"
 ${context}${body.join('\n')}
@@ -460,15 +462,7 @@ ${location}
 }
 `,
   )
-  return `terraform {
-  required_providers {
-    panos = {
-      source  = "PaloAltoNetworks/panos"
-      version = "~> 2.0"
-    }
-  }
-}
-
+  return `${requiredProviders('panos2')}
 ${objs.join('\n')}${objs.length ? '\n' : ''}# Manages the entire rulebase at this location; rules outside this list are removed.
 resource "panos_security_policy" "${slug(policyName).replace(/-/g, '_')}" {
 ${location}
@@ -613,15 +607,7 @@ const fmc = (rules: Rule[], { policyName }: Options) => {
     ...[...netData.entries()].map(([k, n]) => `# Assumes an existing Network object; use fmc_host / fmc_network_group data sources for other types.\ndata "fmc_network" "${k}" {\n  name = ${q(n)}\n}\n`),
   ]
 
-  return `terraform {
-  required_providers {
-    fmc = {
-      source  = "CiscoDevNet/fmc"
-      version = "~> 2.0"
-    }
-  }
-}
-
+  return `${requiredProviders('fmc')}
 # Credentials: set FMC_USERNAME and FMC_PASSWORD in the environment.
 provider "fmc" {
   url = "https://<fmc-host>"
@@ -827,15 +813,7 @@ const panos1 = (rules: Rule[], { policyName }: Options) => {
 }
 `,
   )
-  return `terraform {
-  required_providers {
-    panos = {
-      source  = "PaloAltoNetworks/panos"
-      version = "~> 1.11"
-    }
-  }
-}
-
+  return `${requiredProviders('panos1')}
 ${objs.join('\n')}${objs.length ? '\n' : ''}resource "panos_security_rule_group" "${slug(policyName).replace(/-/g, '_')}" {
   position_keyword = "bottom"
 ${body.join('\n')}
@@ -980,15 +958,7 @@ ${entries.join(',\n')}
 # Attach with iosxe_interface_ethernet: ip_access_group_${plan.direction}_enable = true, ip_access_group_${plan.direction} = "${plan.name}"
 `
   })
-  return `terraform {
-  required_providers {
-    iosxe = {
-      source  = "CiscoDevNet/iosxe"
-      version = "~> 1.0"
-    }
-  }
-}
-
+  return `${requiredProviders('iosxe')}
 # IOS XE only (NETCONF/RESTCONF). Set credentials via IOSXE_USERNAME / IOSXE_PASSWORD.
 provider "iosxe" {
   host = "<device-ip>"
@@ -1138,7 +1108,8 @@ const azfwTerraform = (rules: Rule[], { policyName }: Options) => {
 ${rs.join('\n')}
   }`
   })
-  return `variable "firewall_policy_id" {
+  return `${requiredProviders('azurerm')}
+variable "firewall_policy_id" {
   type        = string
   description = "ID of the existing azurerm_firewall_policy"
 }
