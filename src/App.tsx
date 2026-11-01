@@ -138,6 +138,9 @@ export default function App() {
     a.click()
     URL.revokeObjectURL(url)
   }
+  const clearAll = () => {
+    if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}? Export or share first if you want to keep them.`)) setRules([])
+  }
   const saveFile = (text: string, filename: string, type = 'text/plain') => {
     const url = URL.createObjectURL(new Blob([text], { type }))
     const a = Object.assign(document.createElement('a'), { href: url, download: filename })
@@ -232,7 +235,7 @@ export default function App() {
               <button className="ghost" onClick={() => setImportOpen(true)}>Import</button>
               <button className="ghost" onClick={exportData} disabled={rules.length === 0}>Export</button>
               {formatSwitch}
-              <button className="ghost" onClick={() => setRules(sampleRules())}>Reset</button>
+              <button className="ghost" onClick={clearAll} disabled={rules.length === 0}>Clear all</button>
               <button className="primary" onClick={() => setRules((rs) => [...rs, { ...blankRule(), name: `rule-${rs.length + 1}` }])}>
                 + Add rule
               </button>
@@ -286,7 +289,11 @@ export default function App() {
                 </div>
               </div>
             ))}
-            {rules.length === 0 && <div className="empty">No rules yet — add one or import a CSV / JSON file.</div>}
+            {rules.length === 0 && (
+              <div className="empty">
+                No rules yet — add one, import a CSV / JSON file, or <button className="ghost" onClick={() => setRules(sampleRules())}>load the example rules</button>.
+              </div>
+            )}
           </div>
 
           {issues.length > 0 && (
