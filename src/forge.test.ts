@@ -6,7 +6,7 @@ import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
 
-const opts = { policyName: 'generated' }
+const opts: { policyName: string; nsxProject?: string } = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
 
@@ -208,6 +208,20 @@ describe('generators (behaviour)', () => {
   it('bicep outputs escape single quotes', () => {
     expect(out('azfw-bicep', [rule({ name: "it's", source: '10.0.0.0/8', destination: '10.1.1.1', notes: "a'b" })])).toContain("name: 'it\\'s'")
     expect(out('azl-bicep', [rule({ name: "it's", notes: "a'b" })])).toContain("description: 'a\\'b'")
+  })
+
+  it('nsx project is optional and switches Terraform, REST and SDK output to project scope', () => {
+    const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' })]
+    const withProject = { policyName: 'generated', nsxProject: 'proj-1' }
+    const tf = out('nsx', rules, withProject)
+    expect(tf).toContain('data "nsxt_policy_project" "project"')
+    expect(tf).toContain('id = "proj-1"')
+    expect(tf).toContain('project_id = data.nsxt_policy_project.project.id')
+    expect(out('nsx', rules)).not.toContain('nsxt_policy_project')
+    expect(out('nsx-ps', rules, withProject)).toContain('/policy/api/v1/orgs/default/projects/proj-1/infra/domains/default/security-policies/')
+    expect(out('nsx-ps', rules)).toContain('/policy/api/v1/infra/domains/default/')
+    expect(out('nsx-sdk', rules, withProject)).toContain("Invoke-OrgsOrgIdProjectsProjectIdInfraPatchSecurityPolicyForDomain -OrgId 'default' -ProjectId 'proj-1' -DomainId 'default'")
+    expect(out('nsx-sdk', rules)).toContain("Invoke-PatchSecurityPolicyForDomain -DomainId 'default'")
   })
 
   it('panos creates service objects and references them', () => {

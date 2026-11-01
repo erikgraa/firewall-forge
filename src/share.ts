@@ -5,6 +5,7 @@ export interface ShareState {
   rules: Rule[]
   target: TargetId
   policyName: string
+  nsxProject?: string
 }
 
 const VERSION = '1'
@@ -39,7 +40,7 @@ const compact = (rule: Rule): Partial<Rule> => {
 }
 
 export const encodeState = async (state: ShareState): Promise<string> => {
-  const json = JSON.stringify({ t: state.target, n: state.policyName, r: state.rules.map(compact) })
+  const json = JSON.stringify({ t: state.target, n: state.policyName, j: state.nsxProject || undefined, r: state.rules.map(compact) })
   const bytes = await pipe(new TextEncoder().encode(json), new CompressionStream('deflate-raw'))
   return `${PREFIX}${VERSION}.${toB64Url(bytes)}`
 }
@@ -51,11 +52,12 @@ export const decodeState = async (fragment: string): Promise<ShareState | null> 
   if (version !== VERSION || !payload) return null
   try {
     const bytes = await pipe(fromB64Url(payload), new DecompressionStream('deflate-raw'))
-    const data = JSON.parse(new TextDecoder().decode(bytes)) as { t: TargetId; n: string; r: Partial<Rule>[] }
+    const data = JSON.parse(new TextDecoder().decode(bytes)) as { t: TargetId; n: string; j?: string; r: Partial<Rule>[] }
     if (!Array.isArray(data.r)) return null
     return {
       target: data.t,
       policyName: data.n ?? 'generated',
+      nsxProject: data.j ?? '',
       rules: data.r.map((r) => ({ ...blankRule(), ...r, id: newId() })),
     }
   } catch {

@@ -18,7 +18,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 | | Target | Output |
 | --- | --- | --- |
-| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (`VMware.Sdk.Nsx.Policy` module, or the Policy REST API via `Invoke-RestMethod`) |
+| ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (`VMware.Sdk.Nsx.Policy` module, or the Policy REST API via `Invoke-RestMethod`); optionally project-scoped (`nsxt_policy_project` data source + `context` block, project-scoped cmdlet / API path) |
 | 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
 | 🔥 | Azure Firewall (policy) | Terraform (`azurerm_firewall_policy_rule_collection_group`) or Bicep (`Microsoft.Network/firewallPolicies/ruleCollectionGroups`), network rules |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
@@ -72,7 +72,7 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
 - [ ] 🗺️ Mermaid diagrams generated from the rules: traffic flow, rule evaluation order (compact rectangles, not diamonds) and a zone view for Palo Alto / FMC; lazy-load Mermaid and offer Copy Mermaid / Download SVG
 - [ ] 🤖 Cisco FMC Ansible (`cisco.fmcansible`) once the module names are checked
-- [ ] 🏢 NSX project-scoped (multitenancy) variants of the PowerShell SDK output
+- [x] 🏢 NSX project-scoped (multitenancy) output for Terraform and PowerShell (optional project ID)
 - [ ] 🔷 Azure Local Bicep: offer the newer `2026-07-01-preview` API version
 - [ ] 🔁 Make the firewalld Ansible policy tasks idempotent
 - [ ] 🔌 Attach generated ACLs to interfaces (Cisco `ios_acl_interfaces` / `iosxe_interface_ethernet`, NSX applied-to groups)
