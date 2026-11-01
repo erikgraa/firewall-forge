@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
 import { EXTRA_COLUMNS } from './columns'
+import { jsonExample, parseJson, toJson } from './json'
 import { TARGETS } from './generators'
 import { blankRule, sampleRules } from './model'
 import type { Rule } from './model'
@@ -304,6 +305,30 @@ describe('csv import', () => {
     expect(r).toMatchObject({ name: 'r1', ports: '22', priority: '110' })
   })
 })
+describe('json import/export', () => {
+  it('round-trips every field losslessly, including enabled and per-target options', () => {
+    const rules = [rule({ name: 'a', enabled: false, zone: 'dmz', permanent: false, logging: true, priority: '250', scope: 'grp', notes: 'n', profile: 'Domain', srcZone: 'in', dstZone: 'out' })]
+    const { rules: back, error } = parseJson(toJson(rules, { target: 'nsx', policyName: 'p' }))
+    expect(error).toBeUndefined()
+    expect(back.map(({ id: _id, ...r }) => r)).toEqual(rules.map(({ id: _id, ...r }) => r))
+  })
+
+  it('accepts a bare array and ignores unknown keys and invalid values', () => {
+    const { rules } = parseJson('[{"name":"x","action":"EXPLODE","logging":"yes","bogus":1,"direction":"Outbound"}]')
+    expect(rules[0]).toMatchObject({ name: 'x', action: 'ALLOW', logging: false, direction: 'Outbound' })
+  })
+
+  it('reports readable errors', () => {
+    expect(parseJson('{nope').error).toContain('Not valid JSON')
+    expect(parseJson('{"rules":5}').error).toContain('array')
+    expect(parseJson('[]').error).toContain('No rules')
+  })
+
+  it('the built-in example parses', () => {
+    expect(parseJson(jsonExample({ target: 'cisco', policyName: 'demo' })).rules).toHaveLength(3)
+  })
+})
+
 describe('share links', () => {
   it('round-trips state and keeps links short', async () => {
     const rules = sampleRules()

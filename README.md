@@ -37,7 +37,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
 - 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
-- 📥 CSV / spreadsheet import and export — the columns follow the selected target (e.g. NSX adds scope / logging / notes, Azure Local adds priority), with a built-in template, 📋 copy and 💾 download of the generated output
+- 📥 Import / export as CSV or JSON (switchable). JSON is lossless; CSV is spreadsheet-friendly and its columns follow the selected target (e.g. NSX adds scope / logging / notes, Azure Local adds priority), with a built-in template, 📋 copy and 💾 download of the generated output
 - 🗂️ Rules are saved in your browser's local storage
 - 🔗 Share link: the whole rule set is compressed into the URL hash (nothing is uploaded)
 - ⚠️ Per-target warnings, e.g. no reject on Windows/Cisco, Windows block-before-allow, default-accept chains
