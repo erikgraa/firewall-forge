@@ -13,6 +13,14 @@ import type { Rule, TargetId } from './model'
 import './App.css'
 
 const STORAGE = 'fwgen.v2'
+const THEME_KEY = 'fwgen.theme'
+type Theme = 'dark' | 'light'
+
+const initialTheme = (): Theme => {
+  const saved = localStorage.getItem(THEME_KEY)
+  if (saved === 'dark' || saved === 'light') return saved
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
 let hashHandled = false
 
 interface Saved {
@@ -43,6 +51,7 @@ export default function App() {
   const [target, setTarget] = useState<TargetId>(initial.target)
   const [policyName, setPolicyName] = useState(initial.policyName)
   const [nsxProject, setNsxProject] = useState(initial.nsxProject ?? '')
+  const [theme, setTheme] = useState<Theme>(initialTheme)
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
   const [dataFormat, setDataFormat] = useState<DataFormat>('csv')
@@ -66,6 +75,11 @@ export default function App() {
       setShared('Shared rules loaded.')
     })
   }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
 
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, nsxProject }))
@@ -200,11 +214,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="logo" />
+        <img src={`${import.meta.env.BASE_URL}${theme === 'light' ? 'icon-light.svg' : 'icon.svg'}`} alt="" className="logo" />
         <div>
           <h1>Firewall Forge</h1>
           <p>One rule model → NSX, SDN, Azure Local, Windows Firewall, Linux (nftables / iptables / firewalld), Cisco and Palo Alto. Runs entirely in your browser.</p>
         </div>
+        <button className="ghost theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label="Toggle light / dark mode">
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
       </header>
 
       <main>
