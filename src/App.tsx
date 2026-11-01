@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PLATFORMS, TARGETS } from './generators'
 import { highlight } from './highlight'
-import { parseCsv } from './csv'
+import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
+import { jsonExample, parseJson, toJson } from './json'
+import type { DataFormat } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
 import { CUSTOM, ENDPOINTS, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
@@ -43,6 +45,8 @@ export default function App() {
   const [nsxProject, setNsxProject] = useState(initial.nsxProject ?? '')
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
+  const [dataFormat, setDataFormat] = useState<DataFormat>('csv')
+  const [importError, setImportError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState<string | null>(null)
 
@@ -77,6 +81,8 @@ export default function App() {
   }
   const extras = EXTRA_COLUMNS[target]
   const gridCols = `${BASE_COLS} ${extras.map((k) => COLUMNS[k].width).join(' ')} 118px`.replace(/\s+/g, ' ')
+  const example = dataFormat === 'csv' ? csvExample(extras) : jsonExample({ target, policyName })
+  const ext = dataFormat
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
   const issues = useMemo(() => validate(rules, target), [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
@@ -118,13 +124,40 @@ export default function App() {
     a.click()
     URL.revokeObjectURL(url)
   }
+  const saveFile = (text: string, filename: string, type = 'text/plain') => {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: filename })
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const exportData = () =>
+    dataFormat === 'csv'
+      ? saveFile(toCsv(rules, extras), `firewall-rules-${target}.csv`, 'text/csv')
+      : saveFile(toJson(rules, { target, policyName }), `firewall-rules-${target}.json`, 'application/json')
   const doImport = () => {
-    const parsed = parseCsv(csv)
-    if (parsed.length) setRules((rs) => [...rs, ...parsed])
+    const result = dataFormat === 'csv' ? { rules: parseCsv(csv, extras), error: undefined as string | undefined } : parseJson(csv)
+    if (!result.rules.length) return setImportError(result.error ?? 'No rules found.')
+    setRules((rs) => [...rs, ...result.rules])
     setCsv('')
+    setImportError(null)
     setImportOpen(false)
   }
+  const pasteInto = (value: string) => {
+    setCsv(value)
+    setImportError(null)
+    const first = value.trimStart()[0]
+    if (dataFormat === 'csv' && (first === '{' || first === '[')) setDataFormat('json')
+  }
 
+  const formatSwitch = (
+    <div className="seg" role="group" aria-label="Data format">
+      {(['csv', 'json'] as const).map((f) => (
+        <button key={f} className={dataFormat === f ? 'on' : ''} onClick={() => { setDataFormat(f); setImportError(null) }}>
+          {f.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  )
   const renderExtra = (r: Rule, key: ColKey) => {
     switch (key) {
       case 'logging':
@@ -179,7 +212,9 @@ export default function App() {
           <div className="panel-head">
             <h2>Rules <span className="count">{rules.length}</span></h2>
             <div className="actions">
-              <button className="ghost" onClick={() => setImportOpen(true)}>Import CSV</button>
+              <button className="ghost" onClick={() => setImportOpen(true)}>Import</button>
+              <button className="ghost" onClick={exportData} disabled={rules.length === 0}>Export</button>
+              {formatSwitch}
               <button className="ghost" onClick={() => setRules(sampleRules())}>Reset</button>
               <button className="primary" onClick={() => setRules((rs) => [...rs, { ...blankRule(), name: `rule-${rs.length + 1}` }])}>
                 + Add rule
@@ -234,7 +269,7 @@ export default function App() {
                 </div>
               </div>
             ))}
-            {rules.length === 0 && <div className="empty">No rules yet — add one or import a CSV.</div>}
+            {rules.length === 0 && <div className="empty">No rules yet — add one or import a CSV / JSON file.</div>}
           </div>
 
           {issues.length > 0 && (
@@ -303,14 +338,32 @@ export default function App() {
       {importOpen && (
         <div className="modal" onClick={() => setImportOpen(false)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Import rules from CSV</h3>
-            <p>Columns: <code>name, source, destination, service-or-protocol, ports, action, direction</code>. Paste straight from a spreadsheet (tab-separated works too).</p>
-            <textarea
-              value={csv}
-              onChange={(e) => setCsv(e.target.value)}
-              placeholder={'app-in,10.0.0.0/24,web-grp,HTTPS (TCP 443),,ALLOW,Inbound\nblock-smb,Any,Any,TCP,445,DROP,Inbound'}
-            />
+            <div className="dialog-head">
+              <h3>Import rules — {current.label} ({current.format})</h3>
+              {formatSwitch}
+            </div>
+            {dataFormat === 'csv' ? (
+              <>
+                <p>
+                  The columns follow the selected target: <code>{csvColumns(extras).join(', ')}</code>. Switch platform or format to get that target's columns. Paste straight from a spreadsheet (tab-separated works too).
+                  If the first row is a header, columns are matched by name in any order and unknown columns are ignored; without a header they are read in the order above.
+                </p>
+                <p>
+                  <b>service</b> is a well-known service (e.g. <code>HTTPS (TCP 443)</code>) or a protocol (<code>TCP</code>, <code>UDP</code>, <code>ICMP</code>, <code>ANY</code>) with <b>ports</b> filled in.
+                  <b> source</b> / <b>destination</b> accept <code>Any</code>, a well-known endpoint, or comma-separated CIDRs. <b>action</b> is ALLOW, DROP or REJECT; <b>direction</b> is Inbound or Outbound; switches such as <b>logging</b> take true/false.
+                </p>
+              </>
+            ) : (
+              <p>
+                JSON keeps every rule field, including the per-target options and the enabled switch, regardless of which target is selected. Paste an exported file or a bare array of rules; unknown keys are ignored and invalid values fall back to defaults.
+              </p>
+            )}
+            <textarea value={csv} onChange={(e) => pasteInto(e.target.value)} placeholder={example} />
+            {importError && <div className="banner">{importError}</div>}
             <div className="actions">
+              <button className="ghost" onClick={() => pasteInto(example)}>Insert example</button>
+              <button className="ghost" onClick={() => saveFile(example + '\n', `firewall-rules-template-${target}.${ext}`, ext === 'csv' ? 'text/csv' : 'application/json')}>Download template</button>
+              <span className="spacer" />
               <button className="ghost" onClick={() => setImportOpen(false)}>Cancel</button>
               <button className="primary" onClick={doImport} disabled={!csv.trim()}>Import</button>
             </div>
