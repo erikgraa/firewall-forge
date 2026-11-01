@@ -32,6 +32,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 ## ✨ Features
 
+- 🌗 Light / dark mode toggle (follows your system by default, remembered per browser), with a matching icon for each
 - 🧩 Platforms with switchable output formats (e.g. NSX: Terraform / PowerShell, Azure Local: az CLI / Bicep, Linux: native / Ansible)
 - 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
