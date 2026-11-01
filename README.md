@@ -63,7 +63,7 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [ ] ☁️ AWS security groups and Azure NSGs (Terraform)
 - [x] 🔥☁️ Azure Firewall policy rule collection groups: Terraform and Bicep (network rules only)
 - [ ] 🌍 Azure Firewall application rules (FQDN / FQDN tags) and DNAT rules
-- [ ] ☸️ Kubernetes NetworkPolicy / Cilium
+- [ ] ☸️ Kubernetes mode: a separate **Firewall | Kubernetes** switch with its own rule table (pod/VM label selectors, namespaces, ingress/egress) and outputs for NetworkPolicy and AdminNetworkPolicy first, then Antrea (vSphere Kubernetes), OVN EgressFirewall (OpenShift Virtualization), Cilium and Calico; warn that NetworkPolicy is allow-only
 - [x] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)
 - [ ] 🔄 Reverse import from `iptables-save`, `nft list ruleset` and NSX JSON
 - [x] 🔗 Shareable links (rules encoded in the URL hash)
