@@ -12,6 +12,8 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 </div>
 
+> ⚠️ **Community-driven, unofficial tool.** Firewall Forge is an independent open-source project and is **not affiliated with, endorsed by, or supported by any vendor**. All product names and trademarks (VMware, NSX, Broadcom, Microsoft, Azure, Cisco, Palo Alto Networks, Red Hat and others) belong to their respective owners and are used for identification only. Output is provided as is, without warranty.
+
 ## 🎯 Targets
 
 | | Target | Output |

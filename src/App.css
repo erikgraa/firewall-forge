@@ -126,7 +126,10 @@ input:disabled { opacity: .45; }
 .t-v { color: #fca5a5; }
 .t-k { color: #c4b5fd; font-weight: 600; }
 
-footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 22px; }
+footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); }
+footer p { margin: 6px auto; max-width: 900px; line-height: 1.5; }
+footer a { color: #a5b4fc; }
+footer .disclaimer { color: var(--text); font-size: 13px; background: #6366f11a; border: 1px solid #6366f155; border-radius: 10px; padding: 10px 14px; }
 
 .modal { position: fixed; inset: 0; background: #000a; display: grid; place-items: center; backdrop-filter: blur(4px); z-index: 10; }
 .dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; width: min(640px, 92vw); display: grid; gap: 12px; }
