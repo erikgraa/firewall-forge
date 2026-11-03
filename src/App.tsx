@@ -6,7 +6,7 @@ import { jsonExample, parseJson, toJson } from './json'
 import type { DataFormat } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
-import { CUSTOM, ENDPOINTS, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
+import { CUSTOM, DEFAULT_NSX_CATEGORY, ENDPOINTS, NSX_CATEGORIES, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
 import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
 import type { Rule, TargetId } from './model'
@@ -28,6 +28,7 @@ interface Saved {
   target: TargetId
   policyName: string
   nsxProject?: string
+  nsxCategory?: string
 }
 
 const BASE_COLS = '44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
@@ -51,6 +52,7 @@ export default function App() {
   const [target, setTarget] = useState<TargetId>(initial.target)
   const [policyName, setPolicyName] = useState(initial.policyName)
   const [nsxProject, setNsxProject] = useState(initial.nsxProject ?? '')
+  const [nsxCategory, setNsxCategory] = useState(initial.nsxCategory ?? DEFAULT_NSX_CATEGORY)
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
@@ -72,6 +74,7 @@ export default function App() {
       setTarget(TARGETS.some((t) => t.id === state.target) ? state.target : 'nsx')
       setPolicyName(state.policyName)
       setNsxProject(state.nsxProject ?? '')
+      setNsxCategory(state.nsxCategory || DEFAULT_NSX_CATEGORY)
       setShared('Shared rules loaded.')
     })
   }, [])
@@ -82,8 +85,8 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, nsxProject }))
-  }, [rules, target, policyName, nsxProject])
+    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, nsxProject, nsxCategory }))
+  }, [rules, target, policyName, nsxProject, nsxCategory])
 
   const current = TARGETS.find((t) => t.id === target)!
   const platforms = PLATFORMS
@@ -98,9 +101,9 @@ export default function App() {
   const example = dataFormat === 'csv' ? csvExample(extras) : jsonExample({ target, policyName })
   const ext = dataFormat
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
-  const issues = useMemo(() => validate(rules, target), [rules, target])
+  const issues = useMemo(() => validate(rules, target, { nsxCategory }), [rules, target, nsxCategory])
   const errors = issues.filter((i) => i.level === 'error')
-  const code = useMemo(() => current.generate(rules, { policyName, nsxProject }), [current, rules, policyName, nsxProject])
+  const code = useMemo(() => current.generate(rules, { policyName, nsxProject, nsxCategory }), [current, rules, policyName, nsxProject, nsxCategory])
   const html = useMemo(() => highlight(code), [code])
 
   const patch = (id: string, change: Partial<Rule>) =>
@@ -127,7 +130,7 @@ export default function App() {
     setTimeout(() => setCopied(false), 1400)
   }
   const share = async () => {
-    const url = await shareUrl({ rules, target, policyName, nsxProject })
+    const url = await shareUrl({ rules, target, policyName, nsxProject, nsxCategory })
     await navigator.clipboard.writeText(url)
     setShared(url.length > 2000 ? `Link copied (${url.length} chars — very long, some apps may truncate it).` : 'Share link copied ✓')
     setTimeout(() => setShared(null), 3500)
@@ -331,10 +334,18 @@ export default function App() {
               <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} />
             </label>
             {current.platform === 'nsx' && (
-              <label title="Optional. Generates the project-scoped Terraform context / API path.">
-                NSX project ID (optional)
-                <input value={nsxProject} placeholder="default (no project)" onChange={(e) => setNsxProject(e.target.value)} />
-              </label>
+              <>
+                <label title="NSX distributed firewall category the policy is created in.">
+                  NSX category
+                  <select value={nsxCategory} onChange={(e) => setNsxCategory(e.target.value)}>
+                    {NSX_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label title="Optional. Generates the project-scoped Terraform context / API path.">
+                  NSX project ID (optional)
+                  <input value={nsxProject} placeholder="default (no project)" onChange={(e) => setNsxProject(e.target.value)} />
+                </label>
+              </>
             )}
             <div className="actions">
               <button className="ghost" onClick={share}>Share link</button>

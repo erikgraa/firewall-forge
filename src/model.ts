@@ -122,3 +122,7 @@ export const baseTarget = (t: TargetId): TargetId => {
   if (t === 'azfw-bicep') return 'azfw-tf'
   return t.endsWith('-ansible') ? (t.replace('-ansible', '') as TargetId) : t
 }
+
+// NSX distributed firewall categories, in evaluation order (Ethernet is layer 2 and evaluated first).
+export const NSX_CATEGORIES = ['Ethernet', 'Emergency', 'Infrastructure', 'Environment', 'Application'] as const
+export const DEFAULT_NSX_CATEGORY = 'Application'

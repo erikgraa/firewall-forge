@@ -9,7 +9,7 @@ export interface Issue {
 const cidr = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
 const portRe = /^\d{1,5}(-\d{1,5})?$/
 
-export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
+export const validate = (rules: Rule[], target?: TargetId, context: { nsxCategory?: string } = {}): Issue[] => {
   const issues: Issue[] = []
   const names = new Map<string, number>()
   rules.forEach((r, i) => {
@@ -44,7 +44,7 @@ export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
   const firstDrop = rules.findIndex((r) => r.enabled && r.action !== 'ALLOW' && r.source === 'Any' && r.destination === 'Any' && !r.ports.trim())
   if (firstDrop >= 0 && firstDrop < rules.length - 1)
     issues.push({ level: 'warn', message: `"${rules[firstDrop].name}" is a catch-all drop but is not the last rule — later rules never match` })
-  if (target) issues.push(...targetWarnings(rules.filter((r) => r.enabled), target))
+  if (target) issues.push(...targetWarnings(rules.filter((r) => r.enabled), target, context))
   return issues
 }
 
@@ -52,10 +52,12 @@ const isIp = (s: string) => cidr.test(s)
 const ENDPOINT_NAMES = new Set(Object.keys(ENDPOINTS))
 const nameOnly = (v: string) => !ENDPOINT_NAMES.has(v.trim()) && v.split(/\s*,\s*/).some((x) => x && !isIp(x))
 
-const targetWarnings = (rules: Rule[], variant: TargetId): Issue[] => {
+const targetWarnings = (rules: Rule[], variant: TargetId, context: { nsxCategory?: string }): Issue[] => {
   const target = baseTarget(variant)
   const warn = (message: string): Issue => ({ level: 'warn', message })
   const out: Issue[] = []
+  if (target === 'nsx' && context.nsxCategory === 'Ethernet' && rules.length)
+    out.push(warn('The Ethernet category is layer 2: rules match MAC addresses and ethertypes, not IPs or L4 ports, so these IP/port rules will not behave as written. Use Emergency, Infrastructure, Environment or Application for IP rules.'))
   const rejects = rules.filter((r) => r.action === 'REJECT')
   const named = rules.filter((r) => nameOnly(r.source) || nameOnly(r.destination))
   const quoted = (rs: Rule[]) => rs.map((r) => `"${r.name}"`).join(', ')

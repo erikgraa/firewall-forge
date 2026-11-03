@@ -10,7 +10,7 @@ import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
 
-const opts: { policyName: string; nsxProject?: string } = { policyName: 'generated' }
+const opts: { policyName: string; nsxProject?: string; nsxCategory?: string } = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
 
@@ -212,6 +212,23 @@ describe('generators (behaviour)', () => {
   it('bicep outputs escape single quotes', () => {
     expect(out('azfw-bicep', [rule({ name: "it's", source: '10.0.0.0/8', destination: '10.1.1.1', notes: "a'b" })])).toContain("name: 'it\\'s'")
     expect(out('azl-bicep', [rule({ name: "it's", notes: "a'b" })])).toContain("description: 'a\\'b'")
+  })
+
+  it('nsx category defaults to Application and is honoured by Terraform, REST and SDK output', () => {
+    const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' })]
+    for (const id of ['nsx', 'nsx-ps', 'nsx-sdk']) expect(out(id, rules)).toMatch(/Application/)
+    const env = { policyName: 'generated', nsxCategory: 'Environment' }
+    expect(out('nsx', rules, env)).toContain('category     = "Environment"')
+    expect(out('nsx-ps', rules, env)).toContain('"category": "Environment"')
+    expect(out('nsx-sdk', rules, env)).toContain("-Category 'Environment'")
+    expect(out('nsx', rules, env)).not.toContain('Application')
+  })
+
+  it('warns that the Ethernet category is layer 2 (NSX only)', () => {
+    const rules = [rule({})]
+    expect(validate(rules, 'nsx', { nsxCategory: 'Ethernet' }).some((i) => i.message.includes('layer 2'))).toBe(true)
+    expect(validate(rules, 'nsx', { nsxCategory: 'Application' }).some((i) => i.message.includes('layer 2'))).toBe(false)
+    expect(validate(rules, 'cisco', { nsxCategory: 'Ethernet' }).some((i) => i.message.includes('layer 2'))).toBe(false)
   })
 
   it('nsx project is optional and switches Terraform, REST and SDK output to project scope', () => {
