@@ -14,8 +14,8 @@ permissions:
   packages: write
 
 concurrency:
-  group: container
-  cancel-in-progress: true
+  group: container-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   image:
