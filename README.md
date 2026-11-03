@@ -86,3 +86,12 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 Generated output is a starting point. Provider schemas, cmdlet parameters and CLI flags vary by version, so review it against your environment before applying. Several parameter names (the SDN `AclRule*` objects, `az stack-hci-vm` flags, firewalld rich-rule `priority`, some predefined NSX service names) were written from documentation and memory and have not been tested against live systems.
 
 Platform limits are not hidden: 🧱 Windows Firewall evaluates Block before Allow regardless of order, 🐧 firewalld zones only filter inbound traffic (outbound uses a policy), and 🌐 Cisco ACLs end in an implicit deny.
+
+🐳 **Run it as a container** (Docker or Podman):
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/erikgraa/firewall-forge:latest
+podman run --rm -p 8080:8080 ghcr.io/erikgraa/firewall-forge:latest
+```
+
+Then open http://localhost:8080. The image is a static nginx site (no runtime internet access needed) that runs as a non-root user, so it also works with rootless Podman. It is rebuilt nightly by `.github/workflows/container.yml` so it carries the latest Terraform provider versions; tags are `latest`, a date (`YYYYMMDD`) and the commit SHA. Build it yourself with `docker build -t firewall-forge .` or `podman build -t firewall-forge .`.

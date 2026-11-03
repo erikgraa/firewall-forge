@@ -1,0 +1,49 @@
+name: Publish container
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # nightly: rebuild with the latest provider versions
+  push:
+    branches: [main]
+  pull_request:
+    paths: [Dockerfile, nginx.conf, .dockerignore, .github/workflows/container.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value={{date 'YYYYMMDD'}}
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.description=Firewall Forge: unofficial, community-driven firewall rule generator (static site)
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          # no-cache so the nightly build really re-fetches provider versions
+          no-cache: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
