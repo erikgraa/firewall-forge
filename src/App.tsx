@@ -6,7 +6,7 @@ import { jsonExample, parseJson, toJson } from './json'
 import type { DataFormat } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
-import { CUSTOM, DEFAULT_NSX_CATEGORY, ENDPOINTS, NSX_CATEGORIES, SERVICES, applyService, blankRule, newId, sampleRules } from './model'
+import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, SERVICES, applyService, blankRule, newId, normalizeNsxCategory, sampleRules } from './model'
 import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
 import type { Rule, TargetId } from './model'
@@ -52,7 +52,7 @@ export default function App() {
   const [target, setTarget] = useState<TargetId>(initial.target)
   const [policyName, setPolicyName] = useState(initial.policyName)
   const [nsxProject, setNsxProject] = useState(initial.nsxProject ?? '')
-  const [nsxCategory, setNsxCategory] = useState(initial.nsxCategory ?? DEFAULT_NSX_CATEGORY)
+  const [nsxCategory, setNsxCategory] = useState(normalizeNsxCategory(initial.nsxCategory))
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
@@ -74,7 +74,7 @@ export default function App() {
       setTarget(TARGETS.some((t) => t.id === state.target) ? state.target : 'nsx')
       setPolicyName(state.policyName)
       setNsxProject(state.nsxProject ?? '')
-      setNsxCategory(state.nsxCategory || DEFAULT_NSX_CATEGORY)
+      setNsxCategory(normalizeNsxCategory(state.nsxCategory))
       setShared('Shared rules loaded.')
     })
   }, [])
@@ -101,7 +101,7 @@ export default function App() {
   const example = dataFormat === 'csv' ? csvExample(extras) : jsonExample({ target, policyName })
   const ext = dataFormat
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
-  const issues = useMemo(() => validate(rules, target, { nsxCategory }), [rules, target, nsxCategory])
+  const issues = useMemo(() => validate(rules, target), [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
   const code = useMemo(() => current.generate(rules, { policyName, nsxProject, nsxCategory }), [current, rules, policyName, nsxProject, nsxCategory])
   const html = useMemo(() => highlight(code), [code])

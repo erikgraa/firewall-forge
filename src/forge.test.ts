@@ -5,7 +5,7 @@ import { jsonExample, parseJson, toJson } from './json'
 import { TARGETS } from './generators'
 import providers from './providers.json'
 import { requiredProviders } from './providers'
-import { blankRule, sampleRules } from './model'
+import { NSX_CATEGORIES, blankRule, normalizeNsxCategory, sampleRules } from './model'
 import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
@@ -224,13 +224,13 @@ describe('generators (behaviour)', () => {
     expect(out('nsx', rules, env)).not.toContain('Application')
   })
 
-  it('warns that the Ethernet category is layer 2 (NSX only)', () => {
-    const rules = [rule({})]
-    expect(validate(rules, 'nsx', { nsxCategory: 'Ethernet' }).some((i) => i.message.includes('layer 2'))).toBe(true)
-    expect(validate(rules, 'nsx', { nsxCategory: 'Application' }).some((i) => i.message.includes('layer 2'))).toBe(false)
-    expect(validate(rules, 'cisco', { nsxCategory: 'Ethernet' }).some((i) => i.message.includes('layer 2'))).toBe(false)
+  it('offers only IP-rule NSX categories and falls back to Application for anything else', () => {
+    expect([...NSX_CATEGORIES]).toEqual(['Emergency', 'Infrastructure', 'Environment', 'Application'])
+    expect(normalizeNsxCategory('Ethernet')).toBe('Application')
+    expect(normalizeNsxCategory('Emergency')).toBe('Emergency')
+    expect(normalizeNsxCategory(undefined)).toBe('Application')
+    expect(normalizeNsxCategory('')).toBe('Application')
   })
-
   it('nsx project is optional and switches Terraform, REST and SDK output to project scope', () => {
     const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' })]
     const withProject = { policyName: 'generated', nsxProject: 'proj-1' }

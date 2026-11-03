@@ -123,6 +123,7 @@ export const baseTarget = (t: TargetId): TargetId => {
   return t.endsWith('-ansible') ? (t.replace('-ansible', '') as TargetId) : t
 }
 
-// NSX distributed firewall categories, in evaluation order (Ethernet is layer 2 and evaluated first).
-export const NSX_CATEGORIES = ['Ethernet', 'Emergency', 'Infrastructure', 'Environment', 'Application'] as const
+// NSX distributed firewall IP-rule categories, in evaluation order. Ethernet (layer 2) is intentionally not offered.
+export const NSX_CATEGORIES = ['Emergency', 'Infrastructure', 'Environment', 'Application'] as const
 export const DEFAULT_NSX_CATEGORY = 'Application'
+export const normalizeNsxCategory = (value?: string): string => ((NSX_CATEGORIES as readonly string[]).includes(value ?? '') ? (value as string) : DEFAULT_NSX_CATEGORY)
