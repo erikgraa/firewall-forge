@@ -5,12 +5,12 @@ import { jsonExample, parseJson, toJson } from './json'
 import { TARGETS } from './generators'
 import providers from './providers.json'
 import { requiredProviders } from './providers'
-import { blankRule, sampleRules } from './model'
+import { NSX_CATEGORIES, blankRule, normalizeNsxCategory, sampleRules } from './model'
 import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
 
-const opts: { policyName: string; nsxProject?: string } = { policyName: 'generated' }
+const opts: { policyName: string; nsxProject?: string; nsxCategory?: string } = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
 
@@ -214,6 +214,23 @@ describe('generators (behaviour)', () => {
     expect(out('azl-bicep', [rule({ name: "it's", notes: "a'b" })])).toContain("description: 'a\\'b'")
   })
 
+  it('nsx category defaults to Application and is honoured by Terraform, REST and SDK output', () => {
+    const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' })]
+    for (const id of ['nsx', 'nsx-ps', 'nsx-sdk']) expect(out(id, rules)).toMatch(/Application/)
+    const env = { policyName: 'generated', nsxCategory: 'Environment' }
+    expect(out('nsx', rules, env)).toContain('category     = "Environment"')
+    expect(out('nsx-ps', rules, env)).toContain('"category": "Environment"')
+    expect(out('nsx-sdk', rules, env)).toContain("-Category 'Environment'")
+    expect(out('nsx', rules, env)).not.toContain('Application')
+  })
+
+  it('offers only IP-rule NSX categories and falls back to Application for anything else', () => {
+    expect([...NSX_CATEGORIES]).toEqual(['Emergency', 'Infrastructure', 'Environment', 'Application'])
+    expect(normalizeNsxCategory('Ethernet')).toBe('Application')
+    expect(normalizeNsxCategory('Emergency')).toBe('Emergency')
+    expect(normalizeNsxCategory(undefined)).toBe('Application')
+    expect(normalizeNsxCategory('')).toBe('Application')
+  })
   it('nsx project is optional and switches Terraform, REST and SDK output to project scope', () => {
     const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1' })]
     const withProject = { policyName: 'generated', nsxProject: 'proj-1' }
