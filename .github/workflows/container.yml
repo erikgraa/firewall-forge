@@ -39,7 +39,7 @@ jobs:
             type=sha,format=short
           labels: |
             org.opencontainers.image.description=Firewall Forge: unofficial, community-driven firewall rule generator (static site)
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
