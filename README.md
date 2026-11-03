@@ -87,4 +87,11 @@ Generated output is a starting point. Provider schemas, cmdlet parameters and CL
 
 Platform limits are not hidden: 🧱 Windows Firewall evaluates Block before Allow regardless of order, 🐧 firewalld zones only filter inbound traffic (outbound uses a policy), and 🌐 Cisco ACLs end in an implicit deny.
 
-🐳 **Run it as a container:** `docker run -p 8080:8080 ghcr.io/erikgraa/firewall-forge:latest` then open http://localhost:8080. The image is a static nginx site (no runtime internet access needed), rebuilt nightly by `.github/workflows/container.yml` so it carries the latest Terraform provider versions; tags are `latest`, a date (`YYYYMMDD`) and the commit SHA. Build it yourself with `docker build -t firewall-forge .`.
+🐳 **Run it as a container** (Docker or Podman):
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/erikgraa/firewall-forge:latest
+podman run --rm -p 8080:8080 ghcr.io/erikgraa/firewall-forge:latest
+```
+
+Then open http://localhost:8080. The image is a static nginx site (no runtime internet access needed) that runs as a non-root user, so it also works with rootless Podman. It is rebuilt nightly by `.github/workflows/container.yml` so it carries the latest Terraform provider versions; tags are `latest`, a date (`YYYYMMDD`) and the commit SHA. Build it yourself with `docker build -t firewall-forge .` or `podman build -t firewall-forge .`.
