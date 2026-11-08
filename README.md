@@ -55,6 +55,14 @@ npm run update-providers   # 🔄 refresh Terraform provider versions from the r
 
 Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 
+## 📋 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and release-note guidance.
+
+## 📚 Product and tool references
+
+See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool references, version information, and known validation gaps for each supported target.
+
 🔄 **Provider versions stay current:** every Terraform output declares `required_providers` from `src/providers.json`. The Pages workflow runs `scripts/update-providers.mjs` before each build (and weekly on a schedule) to bump each provider to its latest release within the major version we generate for; if the registry is unreachable the committed versions are used. A new *major* version needs a manual update. Dependabot keeps npm packages and GitHub Actions up to date.
 
 ## 🗺️ Roadmap / TODO
@@ -72,13 +80,14 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 - [x] 🔗 Shareable links (rules encoded in the URL hash)
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
+- [ ] 🧰 Multiple example configuration sets / templates for common scenarios, selectable instead of only the current sample rules
 - [x] 🧪 Unit tests for the generators
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
 - [ ] 🗺️ Mermaid diagrams generated from the rules: traffic flow, rule evaluation order (compact rectangles, not diamonds) and a zone view for Palo Alto / FMC; lazy-load Mermaid and offer Copy Mermaid / Download SVG
 - [ ] 🤖 Cisco FMC Ansible (`cisco.fmcansible`) once the module names are checked
 - [x] 🏢 NSX project-scoped (multitenancy) output for Terraform and PowerShell (optional project ID)
 - [ ] 🔷 Azure Local Bicep: offer the newer `2026-07-01-preview` API version
-- [ ] 🔁 Make the firewalld Ansible policy tasks idempotent
+- [x] 🔁 Make firewalld Ansible policy setup and policy-rule tasks idempotent with query-before-add checks
 - [ ] 🔌 Attach generated ACLs to interfaces (Cisco `ios_acl_interfaces` / `iosxe_interface_ethernet`, NSX applied-to groups)
 
 ## ⚠️ Caveats
@@ -86,6 +95,8 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 Generated output is a starting point. Provider schemas, cmdlet parameters and CLI flags vary by version, so review it against your environment before applying. Several parameter names (the SDN `AclRule*` objects, `az stack-hci-vm` flags, firewalld rich-rule `priority`, some predefined NSX service names) were written from documentation and memory and have not been tested against live systems.
 
 Platform limits are not hidden: 🧱 Windows Firewall evaluates Block before Allow regardless of order, 🐧 firewalld zones only filter inbound traffic (outbound uses a policy), and 🌐 Cisco ACLs end in an implicit deny.
+
+The firewalld Ansible output uses `ansible.posix.firewalld` for zone rules and checks policy state before adding policies, zone associations, or rich rules. These generated tasks are covered by unit tests, but have not been validated on a live firewalld host; review them against the firewalld version and policy configuration in your environment.
 
 🐳 **Run it as a container** (Docker or Podman):
 

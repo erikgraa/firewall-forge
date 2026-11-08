@@ -236,6 +236,7 @@ const yq = (s: string) => `'${s.replace(/'/g, "''")}'`
 const firewalldAnsible = (rules: Rule[], { policyName }: Options) => {
   const { policy, perm, runtime } = firewalldPlan(rules, policyName)
   const tasks: string[] = []
+  let checkId = 0
   const cmdTask = (name: string, argv: string[], tolerate?: string) =>
     [
       `    - name: ${yq(name)}`,
@@ -245,6 +246,26 @@ const firewalldAnsible = (rules: Rule[], { policyName }: Options) => {
         ? ['      register: result', `      failed_when: result.rc != 0 and ${yq(tolerate)} not in result.stderr`, '      changed_when: result.rc == 0']
         : ['      changed_when: false']),
     ].join('\n')
+  const queryThenAdd = (name: string, query: string[], add: string[]) => {
+    const result = `firewalld_check_${checkId++}`
+    tasks.push(
+      [
+        `    - name: ${yq(`Check ${name}`)}`,
+        '      ansible.builtin.command:',
+        `        argv: [${query.map(yq).join(', ')}]`,
+        `      register: ${result}`,
+        '      changed_when: false',
+        `      failed_when: ${result}.rc not in [0, 1]`,
+      ].join('\n'),
+      [
+        `    - name: ${yq(name)}`,
+        '      ansible.builtin.command:',
+        `        argv: [${add.map(yq).join(', ')}]`,
+        `      when: ${result}.rc == 1`,
+        '      changed_when: true',
+      ].join('\n'),
+    )
+  }
   const emit = (it: FwItem) => {
     if (it.todo) {
       tasks.push(`    # ${it.name}: ${it.todo}`)
@@ -266,15 +287,17 @@ const firewalldAnsible = (rules: Rule[], { policyName }: Options) => {
         )
       } else {
         // The firewalld module cannot target policies, so outbound rules call firewall-cmd directly.
-        tasks.push(cmdTask(label, ['firewall-cmd', ...(it.runtimeOnly ? [] : ['--permanent']), '--policy', r.policy!, '--add-rich-rule', r.rich]))
+        const scope = ['firewall-cmd', ...(it.runtimeOnly ? [] : ['--permanent']), '--policy', r.policy!]
+        queryThenAdd(label, [...scope, '--query-rich-rule', r.rich], [...scope, '--add-rich-rule', r.rich])
       }
     })
   }
 
   if (policy) {
     tasks.push(cmdTask(`Create policy ${policy}`, ['firewall-cmd', '--permanent', '--new-policy', policy], 'NAME_CONFLICT'))
-    tasks.push(cmdTask('Policy ingress zone HOST', ['firewall-cmd', '--permanent', '--policy', policy, '--add-ingress-zone', 'HOST']))
-    tasks.push(cmdTask('Policy egress zone ANY', ['firewall-cmd', '--permanent', '--policy', policy, '--add-egress-zone', 'ANY']))
+    const scope = ['firewall-cmd', '--permanent', '--policy', policy]
+    queryThenAdd('Policy ingress zone HOST', [...scope, '--query-ingress-zone', 'HOST'], [...scope, '--add-ingress-zone', 'HOST'])
+    queryThenAdd('Policy egress zone ANY', [...scope, '--query-egress-zone', 'ANY'], [...scope, '--add-egress-zone', 'ANY'])
   }
   for (const it of perm) emit(it)
   if (perm.length || policy) tasks.push(cmdTask('Reload firewalld (drops runtime-only rules)', ['firewall-cmd', '--reload']))
