@@ -59,6 +59,10 @@ Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 
 See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and release-note guidance.
 
+## 📚 Product and tool references
+
+See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool references, version information, and known validation gaps for each supported target.
+
 🔄 **Provider versions stay current:** every Terraform output declares `required_providers` from `src/providers.json`. The Pages workflow runs `scripts/update-providers.mjs` before each build (and weekly on a schedule) to bump each provider to its latest release within the major version we generate for; if the registry is unreachable the committed versions are used. A new *major* version needs a manual update. Dependabot keeps npm packages and GitHub Actions up to date.
 
 ## 🗺️ Roadmap / TODO
