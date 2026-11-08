@@ -8,7 +8,11 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Added
 
-- Nothing yet.
+- This changelog and guidance for future release notes.
+
+### Fixed
+
+- Firewalld Ansible policy setup and policy-rule tasks now check state before adding configuration, making repeat runs idempotent.
 
 ## Release process
 

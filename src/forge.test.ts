@@ -127,7 +127,7 @@ describe('generators (behaviour)', () => {
     expect(text).toContain("argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--query-rich-rule'")
     expect(text).toContain("argv: ['firewall-cmd', '--permanent', '--policy', 'generated-out', '--add-rich-rule'")
     expect(text).toContain('failed_when: firewalld_check_0.rc not in [0, 1]')
-    expect(text).toContain('when: firewalld_check_3.rc == 1')
+    expect(text).toContain('when: firewalld_check_2.rc == 1')
     expect(text.indexOf("'Reload firewalld")).toBeGreaterThan(text.indexOf("name: 'keep'"))
     expect(text.indexOf("name: 'temp'")).toBeGreaterThan(text.indexOf("'Reload firewalld"))
   })
