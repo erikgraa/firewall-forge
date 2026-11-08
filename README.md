@@ -32,11 +32,12 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 
 ## ✨ Features
 
-- 🌗 Light / dark mode toggle (follows your system by default, remembered per browser), with a matching icon for each
+- 🌗 Light-first enterprise workspace with a dark mode toggle, remembered per browser
 - 🧩 Platforms with switchable output formats (e.g. NSX: Terraform / PowerShell, Azure Local: az CLI / Bicep, Linux: native / Ansible)
-- 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
+- 📝 Searchable policy table and selected-rule inspector with editing, enable/disable, reorder, duplicate and delete. Search never changes the full policy or its generated output
+- 🖥️ Desktop split view for rule editing and live code / validation, summary cards, and responsive stacking on smaller screens. Templates and history navigation are marked as upcoming
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
-- 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
+- 🎛️ Inspector options that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
 - 📥 Import / export as CSV or JSON (switchable). JSON is lossless; CSV is spreadsheet-friendly and its columns follow the selected target (e.g. NSX adds scope / logging / notes, Azure Local adds priority), with a built-in template, 📋 copy and 💾 download of the generated output
 - 🗂️ Rules are saved in your browser's local storage

@@ -9,6 +9,7 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 ### Added
 
 - This changelog and guidance for future release notes.
+- Light-first policy workspace with a narrow app rail, policy context strip, summary cards, searchable rules, selected-rule inspector, and desktop code / validation split view. Dark mode and responsive stacking remain available.
 
 ### Fixed
 
