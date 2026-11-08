@@ -76,6 +76,7 @@ See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and release-note guidan
 - [x] 🔗 Shareable links (rules encoded in the URL hash)
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
+- [ ] 🧰 Multiple example configuration sets / templates for common scenarios, selectable instead of only the current sample rules
 - [x] 🧪 Unit tests for the generators
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
 - [ ] 🗺️ Mermaid diagrams generated from the rules: traffic flow, rule evaluation order (compact rectangles, not diamonds) and a zone view for Palo Alto / FMC; lazy-load Mermaid and offer Copy Mermaid / Download SVG
