@@ -31,6 +31,17 @@
   --t-f: #67e8f9;
   --t-v: #fca5a5;
   --t-k: #c4b5fd;
+  --action-import: #93c5fd;
+  --action-export: #6ee7b7;
+  --action-clear: #fda4af;
+  --action-reject: #fcd34d;
+  --format-terraform: #c4b5fd;
+  --format-legacy: #f9a8d4;
+  --format-ansible: #93c5fd;
+  --format-powershell: #67e8f9;
+  --format-bicep: #86efac;
+  --format-native: #fcd34d;
+  --on-format: #0b1020;
   color-scheme: dark;
 }
 
@@ -63,6 +74,17 @@
   --t-f: #0e7490;
   --t-v: #b91c1c;
   --t-k: #6d28d9;
+  --action-import: #1d4ed8;
+  --action-export: #065f46;
+  --action-clear: #991b1b;
+  --action-reject: #854d0e;
+  --format-terraform: #6d28d9;
+  --format-legacy: #9d174d;
+  --format-ansible: #1d4ed8;
+  --format-powershell: #155e75;
+  --format-bicep: #166534;
+  --format-native: #854d0e;
+  --on-format: #fff;
   color-scheme: light;
 }
 
@@ -117,6 +139,14 @@ button:active { transform: translateY(1px); }
 button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; color: var(--on-accent); font-weight: 600; }
 button.primary:hover { filter: brightness(1.1); }
 button:disabled { opacity: .5; cursor: not-allowed; }
+button:disabled:active { transform: none; }
+button.action-button { border-color: var(--action-color); color: var(--action-color); background: color-mix(in srgb, var(--action-color) 12%, var(--panel)); font-weight: 600; }
+button.import-action { --action-color: var(--action-import); }
+button.export-action { --action-color: var(--action-export); }
+button.clear-action { --action-color: var(--action-clear); }
+button.action-button:hover:not(:disabled) { background: color-mix(in srgb, var(--action-color) 20%, var(--panel)); }
+button.action-button:active:not(:disabled) { background: color-mix(in srgb, var(--action-color) 24%, var(--panel)); }
+button.action-button:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
 
 input, select, textarea {
   font: inherit; color: var(--text); background: var(--input-bg); border: 1px solid var(--line);
@@ -139,7 +169,12 @@ input:disabled { opacity: .45; }
 
 .pill { font-weight: 600; text-align: center; }
 .pill.allow { color: var(--ok); }
-.pill.drop, .pill.reject { color: var(--bad); }
+.pill.drop { color: var(--bad); }
+.pill.reject { color: var(--action-reject); }
+select.pill option { background: var(--input-bg); font-weight: 600; }
+select.pill option[value='ALLOW'] { color: var(--ok); }
+select.pill option[value='DROP'] { color: var(--bad); }
+select.pill option[value='REJECT'] { color: var(--action-reject); }
 
 .row-actions { display: flex; gap: 3px; justify-content: flex-end; }
 .row-actions button { padding: 4px 7px; line-height: 1; }
@@ -163,7 +198,13 @@ input:disabled { opacity: .45; }
 .output-summary:focus-visible, .workspace-summary:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 4px; }
 .output details[open] > .output-summary, .policy-workspace[open] > .workspace-summary { margin-bottom: 16px; }
 
-.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.product-picker { min-width: 0; margin: 0 0 16px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.product-picker legend { padding: 0 7px; font-size: 14px; font-weight: 600; }
+.product-picker > p { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); grid-auto-rows: 1fr; gap: 8px; }
+.product-picker .tab { min-width: 0; width: 100%; height: 100%; text-align: left; gap: 4px; }
+.product-picker .tab span, .product-picker .tab small { white-space: normal; overflow-wrap: anywhere; }
+.button-icon { display: inline-block; width: 16px; height: 16px; flex-shrink: 0; vertical-align: -3px; margin-right: 6px; }
 .tab {
   --platform-color: var(--muted);
   display: flex; flex-direction: column; align-items: flex-start; padding: 7px 12px;
@@ -222,8 +263,15 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 
 .formats { display: flex; align-items: center; gap: 6px; margin: -2px 0 12px; flex-wrap: wrap; }
 .formats-label { color: var(--muted); font-size: 12px; font-weight: 600; margin-right: 4px; }
-.format { padding: 5px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 600; border-color: var(--link); color: var(--text); }
-.format.active, .format.active:hover { color: #fff; border-color: #4f46e5; background: #4f46e5; }
+.format { transition: transform .08s, box-shadow .15s; --format-color: var(--format-native); padding: 5px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 600; border-color: var(--format-color); color: var(--format-color); background: color-mix(in srgb, var(--format-color) 10%, var(--panel)); }
+.format[data-format^='Terraform'] { --format-color: var(--format-terraform); }
+.format[data-format='Terraform 1.x'] { --format-color: var(--format-legacy); }
+.format[data-format='Ansible'], .format[data-format='az CLI'] { --format-color: var(--format-ansible); }
+.format[data-format^='PowerShell'] { --format-color: var(--format-powershell); }
+.format[data-format='Bicep'], .format[data-format='PowerShell (SDK)'] { --format-color: var(--format-bicep); }
+.format:hover:not(:disabled) { border-color: var(--format-color); background: color-mix(in srgb, var(--format-color) 18%, var(--panel)); }
+.format.active, .format.active:hover { color: var(--on-format); border-color: var(--format-color); background: var(--format-color); box-shadow: inset 0 0 0 1px var(--format-color); }
+.format.active:hover:not(:disabled) { box-shadow: 0 0 0 2px color-mix(in srgb, var(--format-color) 35%, transparent); }
 
 .spacer { flex: 1; }
 
@@ -234,3 +282,7 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .theme-toggle { padding: 7px 10px; line-height: 1; font-size: 16px; }
 .top { position: relative; }
 .top .theme-toggle { margin-left: auto; }
+
+.rule-order { color: var(--muted); text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rule-name-cell { display: grid; min-width: 0; gap: 6px; }
+.rule-name-cell > input { min-width: 0; width: 100%; }

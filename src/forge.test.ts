@@ -9,10 +9,74 @@ import { NSX_CATEGORIES, blankRule, normalizeNsxCategory, sampleRules } from './
 import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
+import { createTemplateRules } from './templates'
 
 const opts: { policyName: string; nsxProject?: string; nsxCategory?: string } = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
+
+describe('starter template output', () => {
+  it.each(TARGETS)('keeps starter rules valid for $id without modifying the saved policy', (target) => {
+    const existing = [rule({ name: 'existing', source: '10.0.0.1', destination: '10.0.0.2' })]
+    const before = JSON.stringify(existing)
+    const options = target.id
+    const starters = [
+      ...createTemplateRules('ssh', options, existing),
+      ...createTemplateRules('web', options, existing),
+      ...createTemplateRules('dns', options, existing),
+    ]
+    expect(starters).toHaveLength(4)
+    expect(starters.every((starter) => !starter.enabled && starter.source === 'Any' && starter.destination === 'Any')).toBe(true)
+    expect(validate([...existing, ...starters], target.id).filter((issue) => issue.level === 'error')).toEqual([])
+    expect(JSON.stringify(existing)).toBe(before)
+    expect(target.generate(starters, opts)).not.toContain('BLOCKED:')
+  })
+
+  it.each(['ssh', 'web', 'dns'] as const)('keeps %s starters disabled through CSV, JSON and share-link round trips', async (template) => {
+    const rules = createTemplateRules(template, 'mikrotik')
+    const expected = rules.map(({ name, service, protocol, ports, source, destination, enabled, routerosChain }) => ({ name, service, protocol, ports, source, destination, enabled, routerosChain }))
+    expect(parseCsv(toCsv(rules, EXTRA_COLUMNS.mikrotik), EXTRA_COLUMNS.mikrotik)).toMatchObject(expected)
+    expect(parseJson(toJson(rules, { target: 'mikrotik', policyName: 'starters' })).rules).toMatchObject(expected)
+    expect((await decodeState(await encodeState({ rules, target: 'mikrotik', policyName: 'starters' })))?.rules).toMatchObject(expected)
+  })
+
+  it('emits both DNS protocols and the selected RouterOS chain in recipe order', () => {
+    const starters = createTemplateRules('dns', 'mikrotik')
+    expect(out('mikrotik', starters)).not.toContain('/ip firewall filter add')
+    expect(out('mikrotik-tf', starters)).not.toContain('resource "routeros_ip_firewall_filter"')
+    const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
+    const commands = out('mikrotik', rules).split('\n').filter((line) => line.startsWith('/ip firewall filter add'))
+    expect(commands).toHaveLength(2)
+    expect(commands[0]).toContain('protocol=udp dst-port=53')
+    expect(commands[1]).toContain('protocol=tcp dst-port=53')
+    expect(commands.every((line) => line.includes('chain=forward') && line.includes('src-address=10.20.0.0/24 dst-address=10.30.0.10'))).toBe(true)
+    expect(out('mikrotik-tf', rules)).not.toContain('BLOCKED:')
+  })
+
+  it('uses native NSX service references rather than unresolved custom-service placeholders', () => {
+    const starters = [...createTemplateRules('ssh', 'nsx'), ...createTemplateRules('web', 'nsx'), ...createTemplateRules('dns', 'nsx')]
+    expect(out('nsx', starters)).not.toContain('services           =')
+    const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
+    const code = out('nsx', rules)
+    for (const service of ['SSH', 'HTTPS', 'DNS-UDP', 'DNS']) expect(code).toContain(`services           = ["/infra/services/${service}"]`)
+    expect(code).not.toContain('TODO:')
+    expect(code.match(/source_groups\s*= \["10.20.0.0\/24"\]/g)).toHaveLength(4)
+    expect(code.match(/destination_groups\s*= \["10.30.0.10"\]/g)).toHaveLength(4)
+  })
+
+  it('keeps Windows DNS commands scoped to the configured clients and server', () => {
+    const starters = createTemplateRules('dns', 'windows')
+    expect(out('windows', starters)).not.toContain('New-NetFirewallRule')
+    const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
+    const code = out('windows', rules)
+    expect(code.match(/New-NetFirewallRule/g)).toHaveLength(2)
+    expect(code).toContain('-Protocol UDP')
+    expect(code).toContain('-Protocol TCP')
+    expect(code).toContain("-RemoteAddress '10.20.0.0/24'")
+    expect(code).toContain("-LocalAddress '10.30.0.10'")
+    expect(code).toContain("-LocalPort '53'")
+  })
+})
 
 describe('MikroTik RouterOS', () => {
   const commands = (rules: Rule[], options = opts) => out('mikrotik', rules, options).split('\n').filter((line) => line.startsWith('/'))
@@ -592,6 +656,22 @@ describe('validate', () => {
 })
 
 describe('csv import', () => {
+  it.each(TARGETS)('preserves mixed enabled states and old positional options for $id', (target) => {
+    const extras = EXTRA_COLUMNS[target.id]
+    const rules = [rule({ name: 'active', enabled: true }), rule({ name: 'inactive', enabled: false })]
+    expect(parseCsv(toCsv(rules, extras), extras).map(({ name, enabled }) => ({ name, enabled }))).toEqual([
+      { name: 'active', enabled: true }, { name: 'inactive', enabled: false },
+    ])
+    const options = { logging: 'true', priority: '17', profile: 'Domain', program: 'server.exe', zone: 'dmz', scope: '/infra/groups/clients', notes: 'retain', srcZone: 'clients', dstZone: 'servers', permanent: 'false', routerosChain: 'forward' }
+    const positional = ['legacy', 'Any', 'Any', 'TCP', '22', 'ALLOW', 'Inbound', ...extras.map((field) => options[field])].join(',')
+    const expected = Object.fromEntries(extras.map((field) => [field, ['logging', 'permanent'].includes(field) ? options[field] === 'true' : options[field]]))
+    expect(parseCsv(positional, extras)[0]).toMatchObject({ name: 'legacy', enabled: true, ...expected })
+  })
+
+  it.each(['false', 'no', '0', 'off'])('recognizes explicit disabled header values (%s) in any column order', (enabled) => {
+    expect(parseCsv(`name,enabled,source,destination,service\npaused,${enabled},Any,Any,TCP`)[0].enabled).toBe(false)
+  })
+
   it('parses services, protocols and directions', () => {
     const rules = parseCsv('name,source,destination,service,ports,action,direction\napp,10.0.0.0/24,web,HTTPS (TCP 443),,ALLOW,Inbound\nblock,Any,Any,TCP,445,DROP,Outbound')
     expect(rules).toHaveLength(2)
@@ -605,7 +685,7 @@ describe('csv import', () => {
       rule({ name: 'smb', service: 'Custom', protocol: 'TCP', ports: '445,139', action: 'DROP' }),
     ]
     const text = toCsv(rules)
-    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction')
+    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction,enabled')
     expect(text).toContain('"Public DNS (1.1.1.1, 8.8.8.8)"')
     const back = parseCsv(text)
     expect(back).toHaveLength(3)
@@ -615,8 +695,8 @@ describe('csv import', () => {
   })
 
   it('each target gets its own columns, and its example round-trips', () => {
-    expect(csvColumns(EXTRA_COLUMNS['azl-nsg']).join()).toBe('name,source,destination,service,ports,action,direction,priority')
-    expect(csvColumns(EXTRA_COLUMNS.nsx).join()).toBe('name,source,destination,service,ports,action,direction,scope,logging,notes')
+    expect(csvColumns(EXTRA_COLUMNS['azl-nsg']).join()).toBe('name,source,destination,service,ports,action,direction,priority,enabled')
+    expect(csvColumns(EXTRA_COLUMNS.nsx).join()).toBe('name,source,destination,service,ports,action,direction,scope,logging,notes,enabled')
     expect(csvColumns(EXTRA_COLUMNS.firewalld)).toContain('permanent')
     for (const t of TARGETS) {
       const extras = EXTRA_COLUMNS[t.id]
@@ -628,7 +708,7 @@ describe('csv import', () => {
     const extras = EXTRA_COLUMNS.firewalld
     const rules = [rule({ name: 'a', source: '10.0.0.0/8', destination: '10.1.1.1', zone: 'dmz', permanent: false, logging: true })]
     const text = toCsv(rules, extras)
-    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction,zone,permanent,logging')
+    expect(text.split('\n')[0]).toBe('name,source,destination,service,ports,action,direction,zone,permanent,logging,enabled')
     const [back] = parseCsv(text, extras)
     expect(back).toMatchObject({ zone: 'dmz', permanent: false, logging: true })
   })

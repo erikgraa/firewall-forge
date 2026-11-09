@@ -1,0 +1,40 @@
+.template-gallery {
+  margin: 0 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+}
+.template-summary { cursor: pointer; font-size: 17px; font-weight: 650; }
+.template-intro, .template-caveat { color: var(--muted); line-height: 1.55; }
+.template-intro { margin: 14px 0; }
+.template-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 16px;
+  text-align: left;
+  white-space: normal;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--link);
+  border-radius: 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.template-card { transition: border-color .15s ease; }
+.template-card:hover { border-color: var(--link); background: var(--panel-2); }
+.template-card-title { display: inline-flex; align-items: center; gap: 9px; color: var(--link); font-size: 16px; font-weight: 650; }
+.template-card-title .button-icon { width: 24px; height: 24px; flex: 0 0 auto; }
+.template-card-description { color: var(--text); line-height: 1.5; }
+.template-card-service { color: var(--muted); font-size: 12px; margin-top: auto; }
+.template-caveat { margin: 14px 0 0; font-size: 13px; }
+.template-gallery summary:focus-visible, .template-gallery button:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
+@media (max-width: 700px) {
+  .template-cards { grid-template-columns: 1fr; }
+  .template-gallery { padding: 14px; }
+}
