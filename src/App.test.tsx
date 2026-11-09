@@ -35,8 +35,8 @@ describe('home logo', () => {
       const formatGroup = markup.split('aria-label="Output format">')[1].split('</div>')[0]
       const formats = TARGETS.filter((t) => t.platform === target.platform)
 
-      expect(platformGroup.match(/class="tab active" aria-pressed="true"/g)).toHaveLength(1)
-      expect(platformGroup).toContain(`class="tab active" aria-pressed="true"><span><span class="selection-mark" aria-hidden="true">✓ </span>${target.label}</span>`)
+      expect(platformGroup.match(/class="tab active" data-platform="[^"]+" aria-pressed="true"/g)).toHaveLength(1)
+      expect(platformGroup).toContain(`class="tab active" data-platform="${target.platform}" aria-pressed="true"><span><span class="selection-mark" aria-hidden="true">✓ </span>${target.label}</span>`)
       expect(formatGroup.match(/class="format active" aria-pressed="true"/g)).toHaveLength(1)
       expect(formatGroup.match(/aria-pressed=/g)).toHaveLength(formats.length)
       expect(formatGroup).toContain(`</span>${target.format}</button>`)
