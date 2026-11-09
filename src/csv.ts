@@ -1,4 +1,4 @@
-import { CUSTOM, SERVICES, applyService, blankRule, sampleRules } from './model'
+import { CUSTOM, ROUTEROS_CHAINS, SERVICES, applyService, blankRule, sampleRules } from './model'
 import type { Action, Direction, Protocol, Rule } from './model'
 import type { ColKey } from './columns'
 
@@ -6,7 +6,7 @@ const protocols: Protocol[] = ['TCP', 'UDP', 'ICMP', 'ANY']
 const profiles = ['Any', 'Domain', 'Private', 'Public'] as const
 
 export const BASE_FIELDS = ['name', 'source', 'destination', 'service', 'ports', 'action', 'direction'] as const
-const EXTRA_FIELDS: ColKey[] = ['logging', 'priority', 'profile', 'program', 'zone', 'scope', 'notes', 'srcZone', 'dstZone', 'permanent']
+const EXTRA_FIELDS: ColKey[] = ['logging', 'priority', 'profile', 'program', 'zone', 'scope', 'notes', 'srcZone', 'dstZone', 'permanent', 'routerosChain']
 const FIELD_LOOKUP = new Map<string, string>([...BASE_FIELDS, ...EXTRA_FIELDS].map((f) => [f.toLowerCase(), f]))
 
 // The columns of the selected target: shared fields first, then that target's own options.
@@ -28,6 +28,7 @@ export const parseCsv = (text: string, extras: ColKey[] = []): Rule[] => {
   const known = rows[0].filter((c) => FIELD_LOOKUP.has(c.trim().toLowerCase())).length
   const hasHeader = known >= 2 && rows[0].some((c) => /^name$/i.test(c.trim()))
   const header = hasHeader ? rows[0].map((h) => FIELD_LOOKUP.get(h.trim().toLowerCase()) ?? '') : csvColumns(extras)
+  const routeros = extras.includes('routerosChain') || header.includes('routerosChain')
 
   return rows.slice(hasHeader ? 1 : 0).map((cells) => {
     const get = (field: string): string | undefined => {
@@ -37,13 +38,15 @@ export const parseCsv = (text: string, extras: ColKey[] = []): Rule[] => {
     const act = (get('action') ?? 'ALLOW').toUpperCase()
     const proto = (get('service') ?? '').toUpperCase() as Protocol
     const svc = get('service') ?? ''
+    const direction = get('direction') ?? 'Inbound'
+    const chain = get('routerosChain') ?? 'Auto'
     let rule: Rule = {
       ...blankRule(),
       name: get('name') ?? '',
-      source: get('source') || 'Any',
-      destination: get('destination') || 'Any',
-      action: (['ALLOW', 'DROP', 'REJECT'].includes(act) ? act : 'ALLOW') as Action,
-      direction: (/^out/i.test(get('direction') ?? '') ? 'Outbound' : 'Inbound') as Direction,
+      source: routeros ? get('source') ?? 'Any' : get('source') || 'Any',
+      destination: routeros ? get('destination') ?? 'Any' : get('destination') || 'Any',
+      action: (routeros || ['ALLOW', 'DROP', 'REJECT'].includes(act) ? act : 'ALLOW') as Action,
+      direction: (routeros ? ['Inbound', 'Outbound'].find((d) => d.toLowerCase() === direction.toLowerCase()) ?? direction : /^out/i.test(direction) ? 'Outbound' : 'Inbound') as Direction,
       logging: truthy(get('logging'), false),
       permanent: truthy(get('permanent'), true),
       program: get('program') ?? '',
@@ -52,12 +55,14 @@ export const parseCsv = (text: string, extras: ColKey[] = []): Rule[] => {
       notes: get('notes') ?? '',
       srcZone: get('srcZone') ?? '',
       dstZone: get('dstZone') ?? '',
+      routerosChain: (ROUTEROS_CHAINS.find((c) => c.toLowerCase() === chain.toLowerCase()) ?? chain) as Rule['routerosChain'],
       priority: /^\d+$/.test((get('priority') ?? '').trim()) ? (get('priority') ?? '').trim() : '',
-      profile: profiles.find((p) => p.toLowerCase() === (get('profile') ?? '').toLowerCase()) ?? 'Any',
+      profile: (profiles.find((p) => p.toLowerCase() === (get('profile') ?? '').toLowerCase()) ?? (routeros ? get('profile') ?? 'Any' : 'Any')) as Rule['profile'],
     }
     rule = SERVICES[svc]
       ? applyService(rule, svc)
-      : { ...rule, service: CUSTOM, protocol: protocols.includes(proto) ? proto : 'ANY', ports: get('ports') ?? '' }
+      : { ...rule, service: CUSTOM, protocol: routeros || protocols.includes(proto) ? proto : 'ANY', ports: get('ports') ?? '' }
+    if (routeros && SERVICES[svc] && get('ports')) rule.ports = get('ports')!
     return rule
   })
 }

@@ -29,6 +29,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | 🐧 | iptables (legacy) | `iptables -A` commands, or Ansible (`ansible.builtin.iptables`) |
 | 🛡️ | Cisco FMC (Firepower) | Terraform (`CiscoDevNet/fmc` 2.x: `fmc_access_control_policy`) |
 | 🔥 | Palo Alto (PAN-OS) | Terraform (`PaloAltoNetworks/panos` 2.x: `panos_security_policy`; or 1.x: `panos_security_rule_group`) or Ansible (`paloaltonetworks.panos`) |
+| 📡 | MikroTik RouterOS 7.x | Native append-only `.rsc` or Terraform-managed IPv4 filter rules (`input` / `forward` / `output`); no NAT or browser-to-router connectivity |
 
 ## ✨ Features
 
@@ -43,6 +44,55 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 - 🗂️ Rules are saved in your browser's local storage
 - 🔗 Share link: the whole rule set is compressed into the URL hash (nothing is uploaded)
 - ⚠️ Per-target warnings, e.g. no reject on Windows/Cisco, Windows block-before-allow, default-accept chains
+
+## 📡 MikroTik RouterOS
+
+Generate native **RouterOS 7.x IPv4 filter** commands as `mikrotik-firewall.rsc`, entirely in the browser. Firewall Forge does not connect to routers. There is no NAT, IPv6, raw/mangle, custom-chain, interface/interface-list, connection-state or Ansible support, and no reverse `.rsc` import. Terraform is available as a separate output format with managed-rule lifecycle and ordering, described below.
+
+- **Chain:** `Auto` maps Inbound to `input` (traffic **to the router**) and Outbound to `output` (traffic **from the router**). Select `forward` for traffic **through the router**. Explicit chains override Direction; the saved Direction is retained but its control is disabled.
+- **Matchers:** literal IPv4 hosts/CIDRs (prefix 0–32), comma-separated address lists, Any (`*`), RFC1918 and public-DNS presets. Lists expand source × destination, preserving table/list order. `Internet`, IPv6, names/groups, empty list entries and malformed addresses block generation; they are never substituted with Any.
+- **Actions and services:** ALLOW → `accept`, DROP → `drop`, REJECT → `reject reject-with=icmp-admin-prohibited`. TCP/UDP use destination ports and ascending ranges (0–65535); empty ports mean all ports. ICMP and ANY require empty ports. Names/notes become escaped comments; logging uses `log=yes` with the rule name as an escaped log prefix. The policy name is a descriptive label, not a RouterOS policy object. Logging destinations are not configured.
+- **Unsupported inherited fields:** program, profile, scope, zones and runtime-only permanence block generation rather than broadening a rule. Clear these fields in the relevant target's editor or a JSON export before reimporting. RouterOS rules persist normally. Shared Priority is not applied: RouterOS `priority` matches packet priority, not evaluation order; table order controls the generated sequence.
+- **Imports:** select MikroTik before importing CSV or a bare JSON array. Invalid JSON field types/enums are rejected, and invalid CSV actions, directions, protocols or conflicting service ports remain errors rather than being replaced by permissive defaults. JSON exports retain every rule field and Chain; older files without Chain default to Auto.
+- **Append-only, not idempotent:** only `/ip firewall filter add` commands are emitted. Nothing existing is removed, reset or reordered. Reimporting creates duplicates. Earlier router rules can make the appended rules unreachable. Any error in an enabled rule blocks the entire configuration, including direct generator calls; disabled rules are omitted.
+
+**Review before applying:** filter chains accept packets when no rule matches. No catch-all deny, established/related accepts, FastTrack or return-traffic rules are inserted. Existing established/related accepts and FastTrack can bypass later deny rules; bridge filtering and hardware offload also affect which traffic reaches the IP firewall. Review the router's current rules and packet flow, and protect management access. These outputs are not a complete router-hardening template.
+
+Download the ordinary `.rsc` file, review it, and upload it using your own router-management tools. **Do not rename it `.auto.rsc`**: that suffix can trigger automatic execution on upload. On RouterOS releases supporting import dry-run, check syntax without applying changes:
+
+```routeros
+/import file-name=mikrotik-firewall.rsc verbose=yes dry-run=yes
+```
+
+The minimum 7.x minor version supporting this check is not confirmed; inspect `/import` help on your device. After review and with an appropriate backup/recovery path, apply manually:
+
+```routeros
+/import file-name=mikrotik-firewall.rsc
+```
+
+Imports are not atomic: a device-side failure can leave earlier commands applied. Safe Mode can help with recovery, but its finite history can be exhausted by large imports; it is not a substitute for console access and a backup. Syntax/semantics were checked against the [current official filter CLI reference](https://manual.mikrotik.com/docs/cli-reference/ip/firewall/filter/) and [scripting documentation](https://manual.mikrotik.com/docs/developer-guides/scripting/), and covered by behavioral tests. **No RouterOS native parser, import dry-run or live firewall test has been performed**, and compatibility with every 7.x minor release is not guaranteed. See [configuration management](https://manual.mikrotik.com/docs/getting-started/configuration-management/) for import and Safe Mode details.
+
+### Terraform-managed filters
+
+Choose **MikroTik RouterOS → Terraform** to download `mikrotik-firewall.tf`. This uses the community-maintained [`terraform-routeros/routeros`](https://registry.terraform.io/providers/terraform-routeros/routeros/latest) provider, constrained to `~> 1.99` by `src/providers.json`; provider **1.99.1** was checked. It is not a MikroTik-official provider. The shared IPv4 validation, chain, matcher and action limitations above apply to both formats.
+
+- **Lifecycle differs from `.rsc`:** Terraform creates and updates its managed `routeros_ip_firewall_filter` resources. Removing or disabling a table rule removes it from configuration and can **delete it on apply**. An empty/all-disabled table can delete every previously managed rule. Keep one configuration and state per router/rule set, and review the plan before applying; do not manage the same rules simultaneously through another state or repeated `.rsc` imports.
+- **Ordering:** `routeros_move_items` references the managed filters in table/expansion order when there are at least two filters. Creation dependencies serialize initial additions; updates and moves are **not atomic**. This does not manage the whole rulebase or guarantee placement relative to existing/unmanaged rules, contiguity after external edits, or uninterrupted packet behavior during changes. Inspect the live order and keep management/recovery access before applying.
+- **Resource identity:** addresses use the rule name plus source/destination expansion indices, remaining stable when table rows move. Renaming a rule recreates its resources; edits to an address list change the matchers associated with its indexed expansions. The policy name is descriptive only, not a separate namespace. Plan review is essential.
+- **Invalid output is deliberately unapplyable:** enabled-rule errors disable Copy/Download and emit diagnostics plus an impossible `required_version = "< 0.0.0"` constraint. This prevents an invalid, otherwise empty configuration from destroying rules already in state. Fix the rules and regenerate; do not remove the guard to apply an invalid file.
+
+Enable [RouterOS 7 REST over `www-ssl`](https://manual.mikrotik.com/docs/developer-guides/rest-api/) with a trusted certificate using your own management tools; the generator does not configure the service or upload anything. Restrict access and use an appropriately permissioned account. Supply `routeros_hosturl` (an `https://` base URL), `routeros_username` and sensitive `routeros_password` through Terraform's `TF_VAR_` environment variables or a secured, untracked variable file **outside the browser**. Certificate verification is enabled (`insecure = false`). For a private CA, the provider supports `ROS_CA_CERTIFICATE` pointing to its PEM certificate file. Never put credentials in Firewall Forge, share links or Git. Protect Terraform state, saved plans and local variable files; `sensitive` does not encrypt them.
+
+On your own machine, initialize and validate the downloaded configuration, then review a plan before deciding whether to apply:
+
+```sh
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+```
+
+Local checks with **Terraform 1.16.6 / RouterOS provider 1.99.1** passed formatting and provider-backed validation for sample, template/Unicode escaping, mixed matcher expansion, single-filter and empty configurations; the blocked-output version guard was also checked. Provider schema inspection confirmed the emitted filter, move and connection fields. **No Terraform plan/apply, live router connection, or live rule-order/packet-behavior test has been performed.**
 
 ## 🛠️ Develop
 

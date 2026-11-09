@@ -9,6 +9,8 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 ### Added
 
 - This changelog and guidance for future release notes.
+- MikroTik RouterOS 7.x IPv4 filter generation as append-only `.rsc`, with Auto/input/forward/output chain controls, logging, CSV/JSON/share roundtrips, chain-aware warnings and blocking validation for unsupported or unsafe rules ([#34](https://github.com/erikgraa/firewall-forge/issues/34)).
+- MikroTik Terraform output using the community `terraform-routeros/routeros` 1.x provider, native filter resources and managed ordering, HTTPS credential variables, and an error guard against applying blocked output.
 
 ### Fixed
 

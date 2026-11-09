@@ -1,4 +1,5 @@
 {
+  "routeros": { "source": "terraform-routeros/routeros", "name": "routeros", "major": 1, "version": "1.99" },
   "nsxt": { "source": "vmware/nsxt", "name": "nsxt", "major": 3, "version": "3.12" },
   "azurerm": { "source": "hashicorp/azurerm", "name": "azurerm", "major": 5, "version": "5.12" },
   "fmc": { "source": "CiscoDevNet/fmc", "name": "fmc", "major": 2, "version": "2.6" },
