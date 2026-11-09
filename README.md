@@ -146,6 +146,14 @@ npm run update-providers   # 🔄 refresh Terraform provider versions from the r
 
 Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 
+### Social link previews
+
+`index.html` includes static description, canonical, Open Graph and Twitter-card metadata so Discord and similar crawlers do not need to run React. The generic 1200 × 630 PNG at `public/social-preview.png` uses the existing app logo, not a user's policy or screenshot. Shared-rule query/hash content is never copied into this metadata; this is not a guarantee that an unfurling service won't receive or cache the URL you paste, so avoid posting sensitive share links.
+
+Canonical and social-image URLs use the production HTTPS domain in `public/CNAME` (`https://firewall-forge.graa.dev/`). The image is copied unchanged to the build root; app assets still use Vite's relative `base: './'`. If hosting a fork at another origin or a project subpath, update the canonical, `og:url`, `og:image` and `twitter:image` URLs together, including that subpath. Crawlers must be able to fetch the initial HTML and PNG publicly without authentication.
+
+Preview changes take effect after deployment, and Discord/other services may cache older previews or suppress embeds through user/server settings. Local HTML/image checks do not prove a live unfurl or force a cache refresh; verify the deployed URLs and a fresh paste after release.
+
 ## 📋 Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and release-note guidance.
@@ -157,6 +165,26 @@ See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool re
 🔄 **Provider versions stay current:** every Terraform output declares `required_providers` from `src/providers.json`. The Pages workflow runs `scripts/update-providers.mjs` before each build (and weekly on a schedule) to bump each provider to its latest release within the major version we generate for; if the registry is unreachable the committed versions are used. A new *major* version needs a manual update. Dependabot keeps npm packages and GitHub Actions up to date.
 
 ## 🗺️ Roadmap / TODO
+
+**Discussion priority:** change preview + undo first, packet what-if testing second. Build confidence in current targets before expanding the target list. These are tracked follow-ups, not implemented features or release commitments; the default-deny project remains deferred.
+
+- [ ] ↩️ **Change preview + undo:** highlight evaluation-order changes when dragging rules between or within sections, show affected positions before/after, and allow a move to be undone. Existing drag/drop, global position labels and accessible move controls are implemented; they are not an order-diff preview or undo history. Coordinate with the rule-set diff backlog item below.
+- [ ] 🧪 **Packet what-if tester:** browser-local source/destination/protocol/port inputs with matching-rule explanations and target-specific assumptions/limitations. The existing topology is a rule-intent diagram, not packet evaluation. Do not imply complete live-firewall simulation, discovered reachability or knowledge of unmanaged rules, connection state, NAT, offload or platform defaults.
+- [ ] 🔎 **Policy diagnostics:** semantic duplicate detection, overlapping-rule shadowing, overly broad allows and unreachable-rule explanations using each target's evaluation model; distinguish uncertain findings from proven ones.
+  - [x] Basic duplicate-name/input validation, any-any warnings, catch-all ordering checks and target-specific warnings already exist. RouterOS catch-all analysis is chain-aware and enabled-only; Windows warns about block-before-allow.
+  - [ ] Extend beyond those checks to semantic overlap/duplicates and target-aware reachability; do not present current simple catch-all checks as a complete shadowing analysis.
+- [ ] 📊 **Validation matrix:** track syntax/parser, provider/module/schema and live-tested status separately for every target/output, with versions, reproducible checks, evidence and explicit gaps. Link the incremental audit and actionable findings to [#25](https://github.com/erikgraa/firewall-forge/issues/25), using [docs/SOURCES.md](docs/SOURCES.md) as the reference inventory rather than duplicating it.
+  - [x] The source index records versions and gaps; native disabled-state work has PowerShell parser and selected Terraform provider validation evidence.
+  - [ ] Complete the per-output matrix, including unverified CLI/module/native syntax and live-system behavior. A parser/schema check is not live verification.
+- [ ] ⌨️ **Large-policy usability:** rule-list search and filters, bulk edits and dedicated keyboard navigation, while preserving actual evaluation order, section membership and visible/hidden rule context.
+  - [x] Topology search, disabled-rule visibility and MikroTik chain filters already exist; move buttons/menus and normal keyboard focus are available.
+  - [ ] Extend to the main rule list, multi-rule operations and efficient keyboard workflows; filtering must not silently reorder or change policy.
+- [ ] 🧹 **Roadmap cleanup / acceptance review:** compare existing work with open issue criteria and track only outstanding follow-ups; do not close issues automatically.
+  - [x] [Sources #27](https://github.com/erikgraa/firewall-forge/issues/27): the README-linked source index covers outputs with references or explicit gaps, version constraints and maintenance guidance. The inventory acceptance criteria appear satisfied; completing the full audit remains separate under #25.
+  - [x] [Changelog #24](https://github.com/erikgraa/firewall-forge/issues/24): root changelog, README link, Unreleased section, Keep a Changelog conventions and documented SemVer release/contribution process are present, without invented historical release sections.
+  - [ ] Obtain maintainer acceptance review for #27 and #24; both remain open. Keep release entries aligned with merged work and preserve any newly identified criterion gaps as concrete follow-ups.
+
+### Existing backlog
 
 - [x] 🐧 nftables output
 - [x] 🐧 iptables output
@@ -171,7 +199,8 @@ See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool re
 - [x] 🔗 Shareable links (rules encoded in the URL hash)
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
-- [ ] 🧰 Loadable configuration templates: create different example rule sets for common firewall scenarios, let users select and load a template into the rule table, and review before replacing their current rules; everything stays in the browser
+- [ ] 🧰 Broader scenario templates: additional example rule sets and a reviewed load/replace workflow beyond the current append-only starters; everything stays in the browser
+  - [x] One-click SSH, Web and DNS starters already append disabled, editable rules without replacing existing work
 - [x] 🧪 Unit tests for the generators
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
 - [x] 🗺️ Live SVG rule-intent topology with linked Rules / Topology tabs, shared editing, filtering and a collapsible Policy workspace ([#36](https://github.com/erikgraa/firewall-forge/issues/36))
