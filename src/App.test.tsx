@@ -5,6 +5,18 @@ import { TARGETS } from './generators'
 
 afterEach(() => vi.unstubAllGlobals())
 
+describe('generated output', () => {
+  it('starts expanded and contains the platform selectors and generated code', () => {
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })
+
+    const markup = renderToStaticMarkup(<App />)
+    const output = markup.split('<section class="panel output">')[1].split('</section>')[0]
+    expect(output).toContain('<details open=""><summary class="output-summary">Generated output</summary>')
+    expect(output).toContain('aria-label="Firewall platform"')
+    expect(output).toContain('<pre class="code">')
+  })
+})
+
 describe('home logo', () => {
   it.each([
     ['light', 'icon-light.svg'],

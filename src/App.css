@@ -159,6 +159,10 @@ input:disabled { opacity: .45; }
 .issues .error { background: #ef44441c; border: 1px solid #ef444455; }
 .issues .warn { background: #f59e0b1a; border: 1px solid #f59e0b55; }
 
+.output-summary { cursor: pointer; font-size: 17px; font-weight: 600; }
+.output-summary:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 4px; }
+.output details[open] > .output-summary { margin-bottom: 16px; }
+
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab {
   --platform-color: var(--muted);

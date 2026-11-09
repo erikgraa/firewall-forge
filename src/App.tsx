@@ -311,52 +311,55 @@ export default function App() {
         </section>
 
         <section className="panel output">
-          <div className="panel-head">
-            <div className="tabs" role="group" aria-label="Firewall platform">
-              {platforms.map((p) => (
-                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} data-platform={p.platform} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
-                  <span>{p.platform === current.platform && <span className="selection-mark" aria-hidden="true">✓ </span>}{p.label}</span>
-                  <small>{TARGETS.filter((t) => t.platform === p.platform).map((t) => t.format).join(' · ')}</small>
+            <details open>
+            <summary className="output-summary">Generated output</summary>
+            <div className="panel-head">
+              <div className="tabs" role="group" aria-label="Firewall platform">
+                {platforms.map((p) => (
+                  <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} data-platform={p.platform} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
+                    <span>{p.platform === current.platform && <span className="selection-mark" aria-hidden="true">✓ </span>}{p.label}</span>
+                    <small>{TARGETS.filter((t) => t.platform === p.platform).map((t) => t.format).join(' · ')}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="formats" role="group" aria-label="Output format">
+              <span className="formats-label">Output format</span>
+              {formats.map((t) => (
+                <button key={t.id} className={t.id === target ? 'format active' : 'format'} aria-pressed={t.id === target} onClick={() => setTarget(t.id)}>
+                  {t.id === target && <span className="selection-mark" aria-hidden="true">✓ </span>}{t.format}
                 </button>
               ))}
             </div>
-          </div>
-          <div className="formats" role="group" aria-label="Output format">
-            <span className="formats-label">Output format</span>
-            {formats.map((t) => (
-              <button key={t.id} className={t.id === target ? 'format active' : 'format'} aria-pressed={t.id === target} onClick={() => setTarget(t.id)}>
-                {t.id === target && <span className="selection-mark" aria-hidden="true">✓ </span>}{t.format}
-              </button>
-            ))}
-          </div>
-          <div className="toolbar">
-            <label>
-              Policy / ACL name
-              <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} />
-            </label>
-            {current.platform === 'nsx' && (
-              <>
-                <label title="NSX distributed firewall category the policy is created in.">
-                  NSX category
-                  <select value={nsxCategory} onChange={(e) => setNsxCategory(e.target.value)}>
-                    {NSX_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </label>
-                <label title="Optional. Generates the project-scoped Terraform context / API path.">
-                  NSX project ID (optional)
-                  <input value={nsxProject} placeholder="default (no project)" onChange={(e) => setNsxProject(e.target.value)} />
-                </label>
-              </>
-            )}
-            <div className="actions">
-              <button className="ghost" onClick={share}>Share link</button>
-              <button className="ghost" onClick={download}>Download {current.filename}</button>
-              <button className="primary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
+            <div className="toolbar">
+              <label>
+                Policy / ACL name
+                <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} />
+              </label>
+              {current.platform === 'nsx' && (
+                <>
+                  <label title="NSX distributed firewall category the policy is created in.">
+                    NSX category
+                    <select value={nsxCategory} onChange={(e) => setNsxCategory(e.target.value)}>
+                      {NSX_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label title="Optional. Generates the project-scoped Terraform context / API path.">
+                    NSX project ID (optional)
+                    <input value={nsxProject} placeholder="default (no project)" onChange={(e) => setNsxProject(e.target.value)} />
+                  </label>
+                </>
+              )}
+              <div className="actions">
+                <button className="ghost" onClick={share}>Share link</button>
+                <button className="ghost" onClick={download}>Download {current.filename}</button>
+                <button className="primary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
+              </div>
             </div>
-          </div>
-          {shared && <div className="notice">{shared}</div>}
-          {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
-          <pre className="code" dangerouslySetInnerHTML={{ __html: html }} />
+            {shared && <div className="notice">{shared}</div>}
+            {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
+            <pre className="code" dangerouslySetInnerHTML={{ __html: html }} />
+          </details>
         </section>
       </main>
 
