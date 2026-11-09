@@ -9,6 +9,8 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 ### Added
 
 - This changelog and guidance for future release notes.
+- Live SVG rule-intent topology with linked Rules / Topology tabs, shared editing and selection, search, disabled-rule visibility, MikroTik chain filters, and target-aware validation. The diagram shows configured matchers and decisions, not discovered devices or guaranteed reachability ([#36](https://github.com/erikgraa/firewall-forge/issues/36)).
+- Collapsible Policy workspace, expanded by default and preserving rule data and the selected Rules / Topology tab when collapsed.
 - MikroTik RouterOS 7.x IPv4 filter generation as append-only `.rsc`, with Auto/input/forward/output chain controls, logging, CSV/JSON/share roundtrips, chain-aware warnings and blocking validation for unsupported or unsafe rules ([#34](https://github.com/erikgraa/firewall-forge/issues/34)).
 - MikroTik Terraform output using the community `terraform-routeros/routeros` 1.x provider, native filter resources and managed ordering, HTTPS credential variables, and an error guard against applying blocked output.
 
