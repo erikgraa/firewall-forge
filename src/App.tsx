@@ -312,24 +312,23 @@ export default function App() {
 
         <section className="panel output">
           <div className="panel-head">
-            <div className="tabs">
+            <div className="tabs" role="group" aria-label="Firewall platform">
               {platforms.map((p) => (
-                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} onClick={() => pickPlatform(p.platform)}>
-                  {p.label}
+                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
+                  <span>{p.platform === current.platform && <span className="selection-mark" aria-hidden="true">✓ </span>}{p.label}</span>
                   <small>{TARGETS.filter((t) => t.platform === p.platform).map((t) => t.format).join(' · ')}</small>
                 </button>
               ))}
             </div>
           </div>
-          {formats.length > 1 && (
-            <div className="formats">
-              {formats.map((t) => (
-                <button key={t.id} className={t.id === target ? 'format active' : 'format'} onClick={() => setTarget(t.id)}>
-                  {t.format}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="formats" role="group" aria-label="Output format">
+            <span className="formats-label">Output format</span>
+            {formats.map((t) => (
+              <button key={t.id} className={t.id === target ? 'format active' : 'format'} aria-pressed={t.id === target} onClick={() => setTarget(t.id)}>
+                {t.id === target && <span className="selection-mark" aria-hidden="true">✓ </span>}{t.format}
+              </button>
+            ))}
+          </div>
           <div className="toolbar">
             <label>
               Policy / ACL name
