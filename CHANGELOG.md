@@ -8,6 +8,7 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Added
 
+- Static Open Graph and Twitter-card metadata with canonical production URLs and a generic PNG preview based on the existing app logo, for link previews without JavaScript execution or user-policy content.
 - One-click SSH, Web and DNS starter templates with decorative icons: one SSH rule, one HTTPS rule or two DNS rules, disabled until the user edits/reviews addresses and enables them. New workspaces start empty while existing saved rules remain intact.
 - Experimental Flat / Sections organization with Unsectioned, named collapsible sections, section-local additions, drag/drop and accessible Move and up/down controls. Moves change actual rule order; section metadata remains temporary and is excluded from saved/exported/shared data.
 - Optional one-policy-per-section NSX output for Terraform, REST PowerShell and SDK PowerShell, plus group comments and compact commands in Windows PowerShell output. Deployment order and resource-identity changes require review; no default-deny controls or generation are included.
@@ -18,6 +19,10 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 - Collapsible Policy workspace, expanded by default and preserving rule data and the selected Rules / Topology tab when collapsed.
 - MikroTik RouterOS 7.x IPv4 filter generation as append-only `.rsc`, with Auto/input/forward/output chain controls, logging, CSV/JSON/share roundtrips, chain-aware warnings and blocking validation for unsupported or unsafe rules ([#34](https://github.com/erikgraa/firewall-forge/issues/34)).
 - MikroTik Terraform output using the community `terraform-routeros/routeros` 1.x provider, native filter resources and managed ordering, HTTPS credential variables, and an error guard against applying blocked output.
+
+### Changed
+
+- Give SSH, Web and DNS starter cards distinct teal, blue and purple accents, tinted backgrounds, icon tiles and service badges in both themes, retaining text labels and keyboard-focus indicators.
 
 ### Fixed
 
