@@ -220,7 +220,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <img src={`${import.meta.env.BASE_URL}${theme === 'light' ? 'icon-light.svg' : 'icon.svg'}`} alt="" className="logo" />
+        <a className="logo-link" href="https://firewall-forge.graa.dev" aria-label="Firewall Forge home">
+          <img src={`${import.meta.env.BASE_URL}${theme === 'light' ? 'icon-light.svg' : 'icon.svg'}`} alt="" className="logo" />
+        </a>
         <div>
           <h1>Firewall Forge</h1>
           <p>One rule model → NSX, SDN, Azure Local, Windows Firewall, Linux (nftables / iptables / firewalld), Cisco and Palo Alto. Runs entirely in your browser.</p>

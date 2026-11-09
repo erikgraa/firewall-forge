@@ -88,6 +88,8 @@ body {
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .top p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.logo-link { display: flex; }
+.logo-link:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 4px; }
 .logo { width: 52px; height: 52px; filter: drop-shadow(0 6px 18px #6366f166); }
 
 main { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
