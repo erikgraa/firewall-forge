@@ -1,5 +1,7 @@
 import { ENDPOINTS, SERVICES } from './model'
 import { requiredProviders } from './providers'
+import { blockedDisabledOutput, disabledRuleWarning } from './disabledRules'
+import { disabledOutputErrors } from './validate'
 import { mikrotik, mikrotikTerraform } from './routeros'
 import { DEFAULT_NSX_CATEGORY } from './model'
 import type { Rule, TargetId } from './model'
@@ -34,9 +36,10 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 
 const nsx = (rules: Rule[], { policyName, nsxProject, nsxCategory }: Options) => {
   const project = nsxProject?.trim()
-  const body = active(rules).map((r, i) => {
+  const body = rules.map((r, i) => {
     const lines = [
       `    display_name       = "${r.name}"`,
+      `    disabled           = ${!r.enabled}`,
       `    action             = "${r.action}"`,
       `    direction          = "${r.direction === 'Inbound' ? 'IN' : 'OUT'}"`,
     ]
@@ -126,7 +129,7 @@ const windows = (rules: Rule[], { policyName }: Options) => {
     '# Windows Defender Firewall evaluates Block rules before Allow rules, regardless of order.',
     '',
   ]
-  active(rules).forEach((r) => {
+  rules.forEach((r) => {
     const proto = { TCP: 'TCP', UDP: 'UDP', ICMP: 'ICMPv4', ANY: 'Any' }[r.protocol]
     const inbound = r.direction === 'Inbound'
     const src = prefixes(r.source, 'net').map((x) => (x === '*' ? 'Any' : x))
@@ -134,7 +137,7 @@ const windows = (rules: Rule[], { policyName }: Options) => {
     const ports = splitPorts(r)
     const parts = [
       `New-NetFirewallRule -DisplayName '${r.name}' -Group '${policyName}' -Direction ${r.direction}`,
-      `-Action ${r.action === 'ALLOW' ? 'Allow' : 'Block'} -Protocol ${proto} -Profile ${r.profile} -Enabled True`,
+      `-Action ${r.action === 'ALLOW' ? 'Allow' : 'Block'} -Protocol ${proto} -Profile ${r.profile} -Enabled ${r.enabled ? 'True' : 'False'}`,
       `-${inbound ? 'RemoteAddress' : 'LocalAddress'} ${arr(src)}`,
       `-${inbound ? 'LocalAddress' : 'RemoteAddress'} ${arr(dst)}`,
     ]
@@ -456,12 +459,13 @@ const panos = (rules: Rule[], { policyName }: Options) => {
   const apps = (r: Rule) => (r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])
   const location = '  location = {\n    vsys = {\n      name = "vsys1"\n    }\n  }\n'
 
-  const body = active(rules).map((r) => {
+  const body = rules.map((r) => {
     const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
     const bad = [...addr(r.source), ...addr(r.destination)].filter((x) => x !== 'any' && !isIp(x))
     const lines = [
       ...(bad.length ? [`      # TODO: ${bad.map((b) => `"${b}"`).join(', ')} must exist as a panos_address / panos_address_group`] : []),
       `      name                  = "${r.name}"`,
+      `      disabled              = ${!r.enabled}`,
       `      source_zones          = ${list(zones(r.srcZone))}`,
       `      source_addresses      = ${list(addr(r.source))}`,
       `      destination_zones     = ${list(zones(r.dstZone))}`,
@@ -612,10 +616,11 @@ const fmc = (rules: Rule[], { policyName }: Options) => {
     return ['      destination_port_literals = [', ports.map((p) => `        { type = "PortLiteral", protocol = "${proto}", port = ${q(p)} }`).join(',\n'), '      ]']
   }
 
-  const body = active(rules).map((r) => {
+  const body = rules.map((r) => {
     const action = { ALLOW: 'ALLOW', DROP: 'BLOCK', REJECT: 'BLOCK_RESET' }[r.action]
     const lines = [
       `      name = ${q(r.name)}`,
+      `      enabled = ${r.enabled}`,
       `      action = ${q(action)}`,
       ...zoneBlock('source_zones', r.srcZone),
       ...zoneBlock('destination_zones', r.dstZone),
@@ -699,7 +704,7 @@ ${body.join('\n')}`
 }
 
 const nsxRuleModels = (rules: Rule[]) =>
-  active(rules).map((r, i) => {
+  rules.map((r, i) => {
     const src = prefixes(r.source, 'nsx')
     const dst = prefixes(r.destination, 'nsx')
     const svc = SERVICES[r.service]
@@ -708,6 +713,7 @@ const nsxRuleModels = (rules: Rule[]) =>
       id: slug(r.name),
       display_name: r.name,
       sequence_number: (i + 1) * 10,
+      disabled: !r.enabled,
       action: r.action,
       direction: r.direction === 'Inbound' ? 'IN' : 'OUT',
       source_groups: src.length ? src : ['ANY'],
@@ -771,6 +777,7 @@ const nsxSdk = (rules: Rule[], { policyName, nsxProject, nsxCategory }: Options)
       ...(entryVars.length ? [`-ServiceEntries @(${entryVars.map((e) => e.v).join(', ')})`] : []),
       `-Scope ${ps(m.scope)}`,
       `-Logged $${m.logged}`,
+      `-Disabled $${m.disabled}`,
       ...(m.notes ? [`-Notes ${q(m.notes as string)}`] : []),
     ]
     return [...entryVars.map((e) => e.line), `$rules += Initialize-Rule ${args.join(' `\n    ')}`].join('\n')
@@ -810,11 +817,12 @@ const panos1 = (rules: Rule[], { policyName }: Options) => {
   }
   const apps = (r: Rule) => (r.protocol === 'ICMP' ? ['icmp', 'ping'] : ['any'])
 
-  const body = active(rules).map((r) => {
+  const body = rules.map((r) => {
     const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
     const bad = [...addr(r.source), ...addr(r.destination)].filter((x) => x !== 'any' && !isIp(x))
     const lines = [
       `    name                  = "${r.name}"`,
+      `    disabled              = ${!r.enabled}`,
       `    source_zones          = ${list(zones(r.srcZone))}`,
       `    source_addresses      = ${list(addr(r.source))}`,
       '    source_users          = ["any"]',
@@ -1012,13 +1020,14 @@ const panosAnsible = (rules: Rule[], { policyName }: Options) => {
       return name
     })
   }
-  const ruleTasks = active(rules).map((r) => {
+  const ruleTasks = rules.map((r) => {
     const act = { ALLOW: 'allow', DROP: 'drop', REJECT: 'reset-both' }[r.action]
     const lines = [
       `    - name: ${yq(r.name)}`,
       '      paloaltonetworks.panos.panos_security_rule:',
       '        provider: "{{ provider }}"',
       `        rule_name: ${yq(r.name)}`,
+      `        disabled: ${!r.enabled}`,
       `        source_zone: ${list(zones(r.srcZone))}`,
       `        source_ip: ${list(addr(r.source))}`,
       `        destination_zone: ${list(zones(r.dstZone))}`,
@@ -1200,7 +1209,7 @@ ${cols.join('\n')}
 `
 }
 
-export const TARGETS: Target[] = [
+const generators: Target[] = [
   { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
   { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (REST)', filename: 'nsx-policy-rest.ps1', generate: nsxPs },
   { id: 'nsx-sdk', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (SDK)', filename: 'nsx-policy.ps1', generate: nsxSdk },
@@ -1226,5 +1235,17 @@ export const TARGETS: Target[] = [
   { id: 'mikrotik', platform: 'mikrotik', label: 'MikroTik RouterOS', format: 'RouterOS (.rsc)', filename: 'mikrotik-firewall.rsc', generate: mikrotik },
   { id: 'mikrotik-tf', platform: 'mikrotik', label: 'MikroTik RouterOS', format: 'Terraform', filename: 'mikrotik-firewall.tf', generate: mikrotikTerraform },
 ]
+
+export const TARGETS: Target[] = generators.map((target) => ({
+  ...target,
+  generate: (rules, options) => {
+    const errors = disabledOutputErrors(rules, target.id)
+    if (errors.length && target.platform !== 'mikrotik') return blockedDisabledOutput(errors.map((issue) => issue.message), target.id)
+    const code = target.generate(rules, options)
+    const warning = disabledRuleWarning(rules, target.id)
+    const prefix = target.filename.endsWith('.bicep') ? '//' : target.id === 'cisco' ? '!' : '#'
+    return warning ? code.replace(/^(#![^\n]*\n)?/, (_match, shebang: string | undefined) => `${shebang ?? ''}${prefix} WARNING: ${warning}\n`) : code
+  },
+}))
 
 export const PLATFORMS = TARGETS.filter((t, i) => TARGETS.findIndex((x) => x.platform === t.platform) === i).map((t) => ({ platform: t.platform, label: t.label }))

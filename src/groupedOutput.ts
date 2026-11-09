@@ -1,4 +1,6 @@
 import { TARGETS } from './generators'
+import { disabledRuleWarning } from './disabledRules'
+import { disabledOutputErrors } from './validate'
 import type { Options } from './generators'
 import type { RuleSection } from './grouping'
 import type { Rule, TargetId } from './model'
@@ -75,36 +77,39 @@ export function generateGroupedOutput(
   rules: Rule[], targetId: TargetId, options: Options, sections: RuleSection[],
   titles: Record<string, string>, separatePolicies: boolean,
 ): GroupedOutput {
-  const result = (code: string, warnings: string[] = [], blocked = false): GroupedOutput => ({ code, warnings, blocked })
+  const omission = disabledRuleWarning(rules, targetId)
+  const result = (code: string, warnings: string[] = [], blocked = false): GroupedOutput => ({ code, warnings: omission ? [omission, ...warnings] : warnings, blocked })
   const block = (reason: string) => result(comment(`Grouped output blocked: ${reason}`) + '\n', [reason, temporary, unverified], true)
   if (!rules.length) return result('')
   const target = TARGETS.find((candidate) => candidate.id === targetId)!
+  const errors = disabledOutputErrors(rules, targetId)
+  if (errors.length) return result(target.generate(rules, options), ['Generation blocked: fix rule errors, including disabled rules.', ...errors.map((issue) => issue.message)], true)
   const isNsx = targetId === 'nsx' || targetId === 'nsx-ps' || targetId === 'nsx-sdk'
   if (targetId !== 'windows' && (!isNsx || !separatePolicies)) return result(target.generate(rules, options))
 
   const { runs, invalid } = runsInRuleOrder(rules, sections)
-  const enabledRuns = runs.filter((run) => run.rules.some((rule) => rule.enabled))
+  const outputRuns = runs
   const title = (group: string) => titles[group] ?? (group === 'unsectioned' ? 'Ungrouped rules' : group)
 
   if (targetId === 'windows') {
     const header = target.generate([], options)
-    const blocks = enabledRuns.map((run) => {
+    const blocks = outputRuns.map((run) => {
       const heading = comment(`Group: ${title(run.group)}${run.continued ? ' (continued)' : ''}`)
-      const commands = run.rules.filter((rule) => rule.enabled).map((rule) => target.generate([rule], options).slice(header.length, -1))
+      const commands = run.rules.map((rule) => target.generate([rule], options).slice(header.length, -1))
       return `${heading}\n${commands.join('\n')}`
     })
     return result(blocks.length ? `${header}${blocks.join('\n\n')}\n` : '', [temporary])
   }
 
   if (invalid) return block('Section metadata does not match the original rule array. Refresh grouping before generating separate policies.')
-  if (!enabledRuns.length) return result('', [temporary])
+  if (!outputRuns.length) return result('', [temporary])
   if (runs.some((run) => run.continued)) return block('A group has repeated noncontiguous membership (continued sections). Separate policies would require merging or reordering rules; make each group contiguous first.')
-  if (enabledRuns.length > 99999) return block('Too many sections for unique policy sequence numbers within the supported NSX range.')
-  if (enabledRuns.some((run) => policyId(run.group).length > 255)) return block('A section identity is too long for the prototype collision-safe policy ID encoding (255-character limit). Use a shorter metadata group identity.')
+  if (outputRuns.length > 99999) return block('Too many sections for unique policy sequence numbers within the supported NSX range.')
+  if (outputRuns.some((run) => policyId(run.group).length > 255)) return block('A section identity is too long for the prototype collision-safe policy ID encoding (255-character limit). Use a shorter metadata group identity.')
 
   const placeholder = 'grouped-policy-placeholder'
   let setup = ''
-  const blocks = enabledRuns.map((run, index) => {
+  const blocks = outputRuns.map((run, index) => {
     const id = policyId(run.group)
     const displayName = `${options.policyName} — ${title(run.group)}`
     const code = target.generate(run.rules, { ...options, policyName: placeholder })
@@ -112,7 +117,7 @@ export function generateGroupedOutput(
     if (targetId === 'nsx') {
       const start = code.indexOf('resource "nsxt_policy_security_policy"')
       if (!index) setup = code.slice(0, start)
-      const dependency = index ? `  depends_on = [nsxt_policy_security_policy.${policyId(enabledRuns[index - 1].group)}]\n` : ''
+      const dependency = index ? `  depends_on = [nsxt_policy_security_policy.${policyId(outputRuns[index - 1].group)}]\n` : ''
       return code.slice(start)
         .replace(`"${placeholder}" {`, `"${id}" {`)
         .replace(`  display_name = "${placeholder}"`, () => `  display_name = ${hclString(displayName)}\n  nsx_id       = "${id}"\n  sequence_number = ${sequence}\n${dependency}`)

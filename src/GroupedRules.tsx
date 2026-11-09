@@ -171,6 +171,7 @@ export default function GroupedRules({ rules, children, membership, titles, setT
       {rules.length ? children(rules.map((rule, index) => ({ rule, index }))) : <p className="empty-state">{emptyMessage}</p>}
       <div className="rule-add-footer"><button type="button" className="ghost action-button add-action" onClick={() => onAdd('unsectioned')}><ButtonIcon name="add" />Add rule</button></div>
     </> : <>
+      <aside className="preview-notice"><strong>Experimental rule sections</strong><p>Flat list is the default. Named sections are temporary: labels and membership reset on reload and are not saved in CSV / JSON or share links. Dragging or using Move changes actual evaluation order. Within a section, drag above or below another rule or use its up/down buttons; section boundaries stay intact. Separate NSX policy output affects deployment and requires review.</p></aside>
       <form className="section-builder" onSubmit={(event) => { event.preventDefault(); createSection() }}>
         <label>New section name<input aria-label="New section name" value={newTitle} placeholder="e.g. Internet access" onChange={(event) => setNewTitle(event.target.value)} /></label>
         <button className="ghost" disabled={!newTitle.trim()}>Create section</button>

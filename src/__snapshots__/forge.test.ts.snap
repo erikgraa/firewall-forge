@@ -557,6 +557,7 @@ resource "fmc_access_control_policy" "generated" {
   rules = [
     {
       name = "web-in"
+      enabled = true
       action = "ALLOW"
       source_network_literals = [
         { value = "10.0.0.0/8" },
@@ -572,6 +573,7 @@ resource "fmc_access_control_policy" "generated" {
     },
     {
       name = "dns-out"
+      enabled = true
       action = "ALLOW"
       destination_network_literals = [
         { value = "1.1.1.1" },
@@ -583,6 +585,7 @@ resource "fmc_access_control_policy" "generated" {
     },
     {
       name = "deny-rest"
+      enabled = true
       action = "BLOCK"
     }
   ]
@@ -643,12 +646,12 @@ exports[`generators (snapshots) > mikrotik output is stable 1`] = `
 # WARNING: Append-only: no existing rules are removed or reordered. Reimport creates duplicates; earlier router rules may shadow the generated rules. Policy / ACL name is descriptive only.
 # WARNING: RouterOS accepts packets when no filter matches. No default deny, established/related accepts or return-traffic rules are added. Existing established/related accepts and FastTrack may bypass later denies; bridge and hardware-offloaded traffic may bypass IP filters. Review packet flow and management access before importing.
 
-/ip firewall filter add chain=input action=accept src-address=10.0.0.0/8 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
-/ip firewall filter add chain=input action=accept src-address=172.16.0.0/12 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
-/ip firewall filter add chain=input action=accept src-address=192.168.0.0/16 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
-/ip firewall filter add chain=output action=accept dst-address=1.1.1.1 protocol=udp dst-port=53 log=no comment="dns-out"
-/ip firewall filter add chain=output action=accept dst-address=8.8.8.8 protocol=udp dst-port=53 log=no comment="dns-out"
-/ip firewall filter add chain=input action=drop log=no comment="deny-rest"
+/ip firewall filter add chain=input action=accept src-address=10.0.0.0/8 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 disabled=no log=no comment="web-in"
+/ip firewall filter add chain=input action=accept src-address=172.16.0.0/12 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 disabled=no log=no comment="web-in"
+/ip firewall filter add chain=input action=accept src-address=192.168.0.0/16 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 disabled=no log=no comment="web-in"
+/ip firewall filter add chain=output action=accept dst-address=1.1.1.1 protocol=udp dst-port=53 disabled=no log=no comment="dns-out"
+/ip firewall filter add chain=output action=accept dst-address=8.8.8.8 protocol=udp dst-port=53 disabled=no log=no comment="dns-out"
+/ip firewall filter add chain=input action=drop disabled=no log=no comment="deny-rest"
 "
 `;
 
@@ -656,7 +659,7 @@ exports[`generators (snapshots) > mikrotik-tf output is stable 1`] = `
 "# Firewall Forge — MikroTik RouterOS 7.x IPv4 filter (Terraform)
 # Policy label: "generated"
 # WARNING: RouterOS 7.x IPv4 filters only. Auto maps Inbound \\E2\\86\\92 input (to router), Outbound \\E2\\86\\92 output (from router); use forward for traffic through the router. Explicit Chain overrides Direction.
-# WARNING: Terraform owns generated rules in state: apply/destroy can update/delete them, including rules removed or disabled in the table. Native ordering moves only generated rule IDs; placement relative to unmanaged rules is not guaranteed. Changes are not atomic. Preserve state, review the plan and management access. Policy / ACL name is descriptive only.
+# WARNING: Terraform owns generated rules in state: apply/destroy can update/delete them, including rules removed from the table. Disabled rules remain managed with disabled=true. Native ordering moves only generated rule IDs; placement relative to unmanaged rules is not guaranteed. Changes are not atomic. Preserve state, review the plan and management access. Policy / ACL name is descriptive only.
 # WARNING: RouterOS accepts packets when no filter matches. No default deny, established/related accepts or return-traffic rules are added. Existing established/related accepts and FastTrack may bypass later denies; bridge and hardware-offloaded traffic may bypass IP filters. Review packet flow and management access before importing.
 
 terraform {
@@ -858,6 +861,7 @@ resource "nsxt_policy_security_policy" "generated" {
 
   rule {
     display_name       = "web-in"
+    disabled           = false
     action             = "ALLOW"
     direction          = "IN"
     source_groups      = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
@@ -868,6 +872,7 @@ resource "nsxt_policy_security_policy" "generated" {
 
   rule {
     display_name       = "dns-out"
+    disabled           = false
     action             = "ALLOW"
     direction          = "OUT"
     destination_groups = ["1.1.1.1", "8.8.8.8"]
@@ -877,6 +882,7 @@ resource "nsxt_policy_security_policy" "generated" {
 
   rule {
     display_name       = "deny-rest"
+    disabled           = false
     action             = "DROP"
     direction          = "IN"
     sequence_number    = 30
@@ -898,6 +904,7 @@ $body = @'
       "id": "web-in",
       "display_name": "web-in",
       "sequence_number": 10,
+      "disabled": false,
       "action": "ALLOW",
       "direction": "IN",
       "source_groups": [
@@ -920,6 +927,7 @@ $body = @'
       "id": "dns-out",
       "display_name": "dns-out",
       "sequence_number": 20,
+      "disabled": false,
       "action": "ALLOW",
       "direction": "OUT",
       "source_groups": [
@@ -941,6 +949,7 @@ $body = @'
       "id": "deny-rest",
       "display_name": "deny-rest",
       "sequence_number": 30,
+      "disabled": false,
       "action": "DROP",
       "direction": "IN",
       "source_groups": [
@@ -982,7 +991,8 @@ $rules += Initialize-Rule -Id 'web-in' \`
     -DestinationGroups @('10.10.10.0/24') \`
     -Services @('/infra/services/HTTPS') \`
     -Scope @('ANY') \`
-    -Logged $false
+    -Logged $false \`
+    -Disabled $false
 
 $rules += Initialize-Rule -Id 'dns-out' \`
     -DisplayName 'dns-out' \`
@@ -993,7 +1003,8 @@ $rules += Initialize-Rule -Id 'dns-out' \`
     -DestinationGroups @('1.1.1.1', '8.8.8.8') \`
     -Services @('/infra/services/DNS-UDP') \`
     -Scope @('ANY') \`
-    -Logged $false
+    -Logged $false \`
+    -Disabled $false
 
 $rules += Initialize-Rule -Id 'deny-rest' \`
     -DisplayName 'deny-rest' \`
@@ -1004,7 +1015,8 @@ $rules += Initialize-Rule -Id 'deny-rest' \`
     -DestinationGroups @('ANY') \`
     -Services @('ANY') \`
     -Scope @('ANY') \`
-    -Logged $false
+    -Logged $false \`
+    -Disabled $false
 
 $policy = Initialize-SecurityPolicy -Id 'generated' -DisplayName 'generated' -Category 'Application' -Rules $rules
 
@@ -1066,6 +1078,7 @@ resource "panos_security_policy" "generated" {
   rules = [
     {
       name                  = "web-in"
+      disabled              = false
       source_zones          = ["any"]
       source_addresses      = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
       destination_zones     = ["any"]
@@ -1077,6 +1090,7 @@ resource "panos_security_policy" "generated" {
     },
     {
       name                  = "dns-out"
+      disabled              = false
       source_zones          = ["any"]
       source_addresses      = ["any"]
       destination_zones     = ["any"]
@@ -1088,6 +1102,7 @@ resource "panos_security_policy" "generated" {
     },
     {
       name                  = "deny-rest"
+      disabled              = false
       source_zones          = ["any"]
       source_addresses      = ["any"]
       destination_zones     = ["any"]
@@ -1129,6 +1144,7 @@ resource "panos_security_rule_group" "generated" {
 
   rule {
     name                  = "web-in"
+    disabled              = false
     source_zones          = ["any"]
     source_addresses      = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
     source_users          = ["any"]
@@ -1143,6 +1159,7 @@ resource "panos_security_rule_group" "generated" {
 
   rule {
     name                  = "dns-out"
+    disabled              = false
     source_zones          = ["any"]
     source_addresses      = ["any"]
     source_users          = ["any"]
@@ -1157,6 +1174,7 @@ resource "panos_security_rule_group" "generated" {
 
   rule {
     name                  = "deny-rest"
+    disabled              = false
     source_zones          = ["any"]
     source_addresses      = ["any"]
     source_users          = ["any"]
@@ -1203,6 +1221,7 @@ exports[`generators (snapshots) > panos-ansible output is stable 1`] = `
       paloaltonetworks.panos.panos_security_rule:
         provider: "{{ provider }}"
         rule_name: 'web-in'
+        disabled: false
         source_zone: ['any']
         source_ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
         destination_zone: ['any']
@@ -1216,6 +1235,7 @@ exports[`generators (snapshots) > panos-ansible output is stable 1`] = `
       paloaltonetworks.panos.panos_security_rule:
         provider: "{{ provider }}"
         rule_name: 'dns-out'
+        disabled: false
         source_zone: ['any']
         source_ip: ['any']
         destination_zone: ['any']
@@ -1229,6 +1249,7 @@ exports[`generators (snapshots) > panos-ansible output is stable 1`] = `
       paloaltonetworks.panos.panos_security_rule:
         provider: "{{ provider }}"
         rule_name: 'deny-rest'
+        disabled: false
         source_zone: ['any']
         source_ip: ['any']
         destination_zone: ['any']

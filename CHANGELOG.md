@@ -21,6 +21,9 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Fixed
 
+- Retain disabled rules using native states in Windows, NSX, PAN-OS, FMC and MikroTik outputs, including disabled-only sections, dependencies and ordering. Unsupported formats still omit disabled rules but warn in the UI and generated code; invalid retained rules block output rather than generate a partial managed policy.
+- Show the experimental-sections warning only in Sections view, not the default Flat view.
+- Dismiss the latest SSH/Web/DNS addition notice after changing one of its new rules' source or destination in Rules or Topology, without enabling the rules.
 - Firewalld Ansible policy setup and policy-rule tasks now check state before adding configuration, making repeat runs idempotent.
 
 ## Release process

@@ -1,5 +1,6 @@
 import { ENDPOINTS, SERVICES, baseTarget } from './model'
 import { routerosIssues } from './routeros'
+import { supportsDisabledRules } from './disabledRules'
 import type { Rule, TargetId } from './model'
 
 export interface Issue {
@@ -43,12 +44,17 @@ export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
   })
   for (const [name, n] of names) if (name && n > 1) issues.push({ level: 'error', message: `Duplicate rule name "${name}"` })
 
-  const firstDrop = rules.findIndex((r) => r.enabled && r.action !== 'ALLOW' && r.source === 'Any' && r.destination === 'Any' && !r.ports.trim())
-  if (firstDrop >= 0 && firstDrop < rules.length - 1)
-    issues.push({ level: 'warn', message: `"${rules[firstDrop].name}" is a catch-all drop but is not the last rule — later rules never match` })
-  if (target) issues.push(...targetWarnings(rules.filter((r) => r.enabled), target))
+  const enabled = rules.filter((r) => r.enabled)
+  const firstDrop = enabled.findIndex((r) => r.action !== 'ALLOW' && r.source === 'Any' && r.destination === 'Any' && !r.ports.trim())
+  if (firstDrop >= 0 && firstDrop < enabled.length - 1)
+    issues.push({ level: 'warn', message: `"${enabled[firstDrop].name}" is a catch-all drop but is not the last enabled rule — later enabled rules never match` })
+  if (target) issues.push(...targetWarnings(supportsDisabledRules(target) ? rules : enabled, target))
   return issues
 }
+
+export const disabledOutputErrors = (rules: Rule[], target: TargetId): Issue[] =>
+  supportsDisabledRules(target) && rules.some((rule) => !rule.enabled)
+    ? validate(rules, target).filter((issue) => issue.level === 'error') : []
 
 const isIp = (s: string) => cidr.test(s)
 const ENDPOINT_NAMES = new Set(Object.keys(ENDPOINTS))
@@ -73,7 +79,7 @@ const targetWarnings = (rules: Rule[], variant: TargetId): Issue[] => {
   if (denyWord[target] && rejects.length)
     out.push(warn(`This target has no reject action — ${quoted(rejects)} will be emitted as ${denyWord[target]} (silently dropped).`))
 
-  if (target === 'windows' && rules.some((r) => r.action === 'ALLOW') && rules.some((r) => r.action !== 'ALLOW'))
+  if (target === 'windows' && rules.some((r) => r.enabled && r.action === 'ALLOW') && rules.some((r) => r.enabled && r.action !== 'ALLOW'))
     out.push(warn('Windows Firewall evaluates Block rules before Allow rules regardless of order — a block can override an allow listed above it.'))
 
   if (['cisco', 'iptables', 'nftables'].includes(target) && rules.some((r) => r.protocol === 'ICMP' && r.ports.trim()))

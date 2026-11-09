@@ -42,6 +42,19 @@ const render = (input: Rule[] = rules, membership: Membership = { first: 'a', th
 }
 
 describe('flat-first section prototype', () => {
+  it.each([false, true])('shows the experimental warning only when Sections is selected (%s)', (sections) => {
+    mode.sections = sections
+    const { markup } = render()
+    expect(markup.includes('Experimental rule sections')).toBe(sections)
+    expect(markup.includes('class="preview-notice"')).toBe(sections)
+    if (sections) {
+      expect(markup).toContain('labels and membership reset on reload')
+      expect(markup).toContain('Dragging or using Move changes actual evaluation order.')
+      expect(markup).toContain('Separate NSX policy output affects deployment and requires review.')
+      expect(markup.indexOf('Experimental rule sections')).toBeGreaterThan(markup.indexOf('Rule organization'))
+    }
+  })
+
   it('defaults to flat list with explicit pressed controls and renders the real global order once', () => {
     const { markup, children } = render()
     expect(markup).toContain('aria-pressed="true">Flat list</button>')

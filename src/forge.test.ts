@@ -10,6 +10,8 @@ import type { Rule } from './model'
 import { decodeState, encodeState } from './share'
 import { validate } from './validate'
 import { createTemplateRules } from './templates'
+import { supportsDisabledRules } from './disabledRules'
+import { generateGroupedOutput } from './groupedOutput'
 
 const opts: { policyName: string; nsxProject?: string; nsxCategory?: string } = { policyName: 'generated' }
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
@@ -42,8 +44,8 @@ describe('starter template output', () => {
 
   it('emits both DNS protocols and the selected RouterOS chain in recipe order', () => {
     const starters = createTemplateRules('dns', 'mikrotik')
-    expect(out('mikrotik', starters)).not.toContain('/ip firewall filter add')
-    expect(out('mikrotik-tf', starters)).not.toContain('resource "routeros_ip_firewall_filter"')
+    expect(out('mikrotik', starters).match(/disabled=yes/g)).toHaveLength(2)
+    expect(out('mikrotik-tf', starters).match(/disabled\s*= true/g)).toHaveLength(2)
     const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
     const commands = out('mikrotik', rules).split('\n').filter((line) => line.startsWith('/ip firewall filter add'))
     expect(commands).toHaveLength(2)
@@ -55,7 +57,8 @@ describe('starter template output', () => {
 
   it('uses native NSX service references rather than unresolved custom-service placeholders', () => {
     const starters = [...createTemplateRules('ssh', 'nsx'), ...createTemplateRules('web', 'nsx'), ...createTemplateRules('dns', 'nsx')]
-    expect(out('nsx', starters)).not.toContain('services           =')
+    expect(out('nsx', starters).match(/disabled\s*= true/g)).toHaveLength(4)
+    for (const service of ['SSH', 'HTTPS', 'DNS-UDP', 'DNS']) expect(out('nsx', starters)).toContain(`services           = ["/infra/services/${service}"]`)
     const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
     const code = out('nsx', rules)
     for (const service of ['SSH', 'HTTPS', 'DNS-UDP', 'DNS']) expect(code).toContain(`services           = ["/infra/services/${service}"]`)
@@ -66,7 +69,8 @@ describe('starter template output', () => {
 
   it('keeps Windows DNS commands scoped to the configured clients and server', () => {
     const starters = createTemplateRules('dns', 'windows')
-    expect(out('windows', starters)).not.toContain('New-NetFirewallRule')
+    expect(out('windows', starters).match(/-Enabled False/g)).toHaveLength(2)
+    expect(out('windows', starters)).not.toContain('-Enabled $false')
     const rules = starters.map((starter) => ({ ...starter, source: '10.20.0.0/24', destination: '10.30.0.10', enabled: true }))
     const code = out('windows', rules)
     expect(code.match(/New-NetFirewallRule/g)).toHaveLength(2)
@@ -192,14 +196,15 @@ describe('MikroTik RouterOS', () => {
     expect(commands(rules)).toEqual([])
   })
 
-  it('ignores disabled errors but blocks duplicate enabled names', () => {
-    const invalid = rule({ enabled: false, source: 'bad', routerosChain: 'invalid' as Rule['routerosChain'] })
-    expect(errors([rule({}), invalid])).toEqual([])
-    expect(commands([rule({}), invalid])).toHaveLength(1)
+  it('validates retained disabled rules and blocks duplicate names in either state', () => {
+    const invalid = rule({ name: 'invalid', enabled: false, source: 'bad', routerosChain: 'invalid' as Rule['routerosChain'] })
+    expect(errors([rule({}), invalid]).length).toBeGreaterThan(0)
+    expect(commands([rule({}), invalid])).toEqual([])
     expect(commands([invalid])).toEqual([])
     expect(commands([])).toEqual([])
     expect(errors([rule({}), rule({})])).toHaveLength(1)
-    expect(commands([rule({}), rule({})])).toEqual([])
+    expect(errors([rule({}), rule({ enabled: false })])).toHaveLength(1)
+    expect(commands([rule({}), rule({ enabled: false })])).toEqual([])
   })
 
   it('does not make blocked diagnostics executable even with injected newlines', () => {
@@ -353,10 +358,15 @@ describe('MikroTik Terraform', () => {
     }
   })
 
-  it('omits disabled rules and avoids invalid zero/single-item moves', () => {
-    for (const rules of [[], [rule({})], [rule({}), rule({ name: 'disabled', enabled: false, source: 'bad' })]])
+  it('retains valid disabled rules and avoids invalid zero/single-item moves', () => {
+    for (const rules of [[], [rule({})], [rule({ enabled: false })]])
       expect(out('mikrotik-tf', rules)).not.toContain('routeros_move_items')
-    expect(resources(out('mikrotik-tf', [rule({ enabled: false, source: 'bad' })]))).toHaveLength(0)
+    const mixed = out('mikrotik-tf', [rule({}), rule({ name: 'disabled', enabled: false })])
+    expect(resources(mixed)).toHaveLength(2)
+    expect(mixed).toContain('routeros_move_items')
+    const invalid = out('mikrotik-tf', [rule({ enabled: false, source: 'bad' })])
+    expect(resources(invalid)).toHaveLength(0)
+    expect(invalid).toContain('required_version = "< 0.0.0"')
   })
 
   it('preserves Terraform format and chain across serialization and rejects invalid JSON', async () => {
@@ -365,6 +375,100 @@ describe('MikroTik Terraform', () => {
     expect(parseJson(toJson([original], { target: 'mikrotik-tf', policyName: 'tf' })).rules[0]).toMatchObject({ routerosChain: 'forward' })
     expect((await decodeState(await encodeState({ rules: [original], target: 'mikrotik-tf', policyName: 'tf' })))?.target).toBe('mikrotik-tf')
     expect(parseJson('[{"action":"JUMP"}]', 'mikrotik-tf').error).toContain('invalid action')
+  })
+})
+
+describe('native disabled-rule output', () => {
+  const formats = [
+    { id: 'nsx', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
+    { id: 'nsx-ps', off: /"disabled": true/g, on: /"disabled": false/g },
+    { id: 'nsx-sdk', off: /-Disabled \$true/g, on: /-Disabled \$false/g },
+    { id: 'windows', off: /-Enabled False/g, on: /-Enabled True/g },
+    { id: 'fmc', off: /enabled = false/g, on: /enabled = true/g },
+    { id: 'panos', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
+    { id: 'panos-1x', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
+    { id: 'panos-ansible', off: /disabled: true/g, on: /disabled: false/g },
+    { id: 'mikrotik', off: /disabled=yes/g, on: /disabled=no/g },
+    { id: 'mikrotik-tf', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
+  ] as const
+
+  it.each(formats)('$id retains mixed rule states and their original order', ({ id, off, on }) => {
+    const rules = [rule({ name: 'first-rule' }), rule({ name: 'middle-rule', enabled: false }), rule({ name: 'last-rule' })]
+    const before = JSON.stringify(rules)
+    const code = out(id, rules)
+    expect(code.match(off)).toHaveLength(1)
+    expect(code.match(on)).toHaveLength(2)
+    expect(code.indexOf('first-rule')).toBeLessThan(code.indexOf('middle-rule'))
+    expect(code.indexOf('middle-rule')).toBeLessThan(code.indexOf('last-rule'))
+    expect(JSON.stringify(rules)).toBe(before)
+  })
+
+  it.each(formats)('$id changes only the native state when a narrow rule is toggled', ({ id, off, on }) => {
+    const rules = [rule({ name: 'keep-identity', enabled: false })]
+    const disabled = out(id, rules)
+    const enabled = out(id, [{ ...rules[0], enabled: true }])
+    expect(disabled.replace(off, '<state>')).toBe(enabled.replace(on, '<state>'))
+    expect(disabled).not.toMatch(/count\s*=\s*0|state:\s*absent/)
+  })
+
+  it.each(formats)('$id blocks invalid retained disabled rules without emitting a partial policy', ({ id }) => {
+    const rules = [rule({ name: 'valid-rule' }), rule({ name: 'invalid-rule', enabled: false, ports: '70000' })]
+    const code = out(id, rules)
+    expect(code).toContain('BLOCKED:')
+    expect(code).not.toMatch(/New-NetFirewallRule|Initialize-Rule|\/ip firewall filter add|resource "/)
+    const grouped = generateGroupedOutput(rules, id, opts, [], {}, false)
+    expect(grouped.blocked).toBe(true)
+    expect(grouped.code).toBe(code)
+    if (['nsx', 'fmc', 'panos', 'panos-1x', 'mikrotik-tf'].includes(id)) expect(code).toContain('required_version = "< 0.0.0"')
+  })
+
+  it.each(['panos', 'panos-1x', 'panos-ansible'] as const)('%s retains service dependencies for disabled rules', (id) => {
+    const code = out(id, [rule({ enabled: false, ports: '2222', service: 'Custom' })])
+    expect(code).toContain('tcp-2222')
+    expect(code).toContain(id === 'panos-ansible' ? 'paloaltonetworks.panos.panos_service_object:' : id === 'panos-1x' ? 'resource "panos_service_object"' : 'resource "panos_service"')
+  })
+
+  it('keeps RouterOS address expansions disabled and in the managed move sequence', () => {
+    const rules = [rule({ name: 'expanded', enabled: false, source: 'Private networks (RFC1918)', destination: '10.0.0.1,10.0.0.2' }), rule({ name: 'last-rule' })]
+    const code = out('mikrotik-tf', rules)
+    expect(code.match(/disabled\s*= true/g)).toHaveLength(6)
+    expect(code.match(/disabled\s*= false/g)).toHaveLength(1)
+    const refs = [...code.matchAll(/resource "routeros_ip_firewall_filter" "([^"]+)"/g)].map((match) => match[1])
+    const move = code.slice(code.indexOf('resource "routeros_move_items"'))
+    expect(refs).toHaveLength(7)
+    expect([...move.matchAll(/routeros_ip_firewall_filter\.([^.]+)\.id/g)].map((match) => match[1])).toEqual(refs)
+    const native = out('mikrotik', rules).split('\n').filter((line) => line.startsWith('/ip firewall filter add'))
+    expect(native).toHaveLength(7)
+    expect(native.slice(0, 6).every((line) => line.includes('disabled=yes'))).toBe(true)
+    expect(native[6]).toContain('disabled=no')
+  })
+
+  it.each(TARGETS.filter((target) => !supportsDisabledRules(target.id)))('$id omits unsupported disabled rules with UI and exported-code warnings', (target) => {
+    const rules = [rule({ name: 'inactive-test-rule', enabled: false }), rule({ name: 'inactive-second', enabled: false })]
+    const output = generateGroupedOutput(rules, target.id, opts, [], {}, false)
+    expect(output.blocked).toBe(false)
+    expect(output.warnings).toHaveLength(1)
+    expect(output.warnings[0]).toContain('2 disabled rules omitted')
+    expect(output.warnings[0]).toContain('does not disable an existing deployed rule')
+    expect(output.warnings[0]).toContain('may remove previously managed rules')
+    const prefix = target.filename.endsWith('.bicep') ? '//' : target.id === 'cisco' ? '!' : '#'
+    expect(output.code).toContain(`${prefix} WARNING: ${output.warnings[0]}`)
+    expect(output.code).not.toContain('inactive-test-rule')
+    expect(output.code).not.toContain('inactive-second')
+    const enabled = out(target.id, [{ ...rules[0], enabled: true }])
+    expect(enabled).not.toContain('disabled rule omitted')
+    if (enabled.startsWith('#!')) expect(output.code.split('\n')[0]).toBe(enabled.split('\n')[0])
+  })
+
+  it('does not treat disabled allows or denies as active evaluation rules', () => {
+    const disabled = rule({ name: 'inactive', enabled: false, action: 'DROP', protocol: 'ANY', ports: '' })
+    const enabled = rule({ name: 'active', action: 'ALLOW' })
+    for (const id of ['windows', 'nsx', 'mikrotik'] as const) {
+      const warnings = validate([disabled, enabled], id).filter((issue) => issue.level === 'warn').map((issue) => issue.message).join('\n')
+      expect(warnings).not.toMatch(/later (enabled )?rules|block can override|allow any → any/)
+      const trailing = validate([{ ...disabled, enabled: true }, { ...enabled, enabled: false }], id).map((issue) => issue.message).join('\n')
+      expect(trailing).not.toMatch(/later (enabled )?rules|block can override/)
+    }
   })
 })
 
@@ -377,13 +481,16 @@ describe('generators (snapshots)', () => {
 })
 
 describe('generators (behaviour)', () => {
-  it('skips disabled rules everywhere', () => {
+  it('retains disabled rules only when the output has a real native disabled state', () => {
     const rules = [rule({ name: 'on' }), rule({ name: 'off', enabled: false })]
     for (const t of TARGETS) {
       const text = out(t.id, rules)
       expect(text).toContain('on')
-      expect(text).not.toContain('off"')
-      expect(text).not.toContain("'off'")
+      if (supportsDisabledRules(t.id)) expect(text).toMatch(/["']off["']/)
+      else {
+        expect(text).not.toMatch(/["']off["']/)
+        expect(text).toContain('1 disabled rule omitted')
+      }
     }
   })
 
