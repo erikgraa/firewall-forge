@@ -1,4 +1,5 @@
 import { ENDPOINTS, SERVICES, baseTarget } from './model'
+import { routerosIssues } from './routeros'
 import type { Rule, TargetId } from './model'
 
 export interface Issue {
@@ -10,6 +11,7 @@ const cidr = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
 const portRe = /^\d{1,5}(-\d{1,5})?$/
 
 export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
+  if (target === 'mikrotik' || target === 'mikrotik-tf') return routerosIssues(rules, target === 'mikrotik-tf' ? 'terraform' : 'rsc')
   const issues: Issue[] = []
   const names = new Map<string, number>()
   rules.forEach((r, i) => {

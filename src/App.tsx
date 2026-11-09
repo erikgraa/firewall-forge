@@ -6,7 +6,7 @@ import { jsonExample, parseJson, toJson } from './json'
 import type { DataFormat } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
-import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, SERVICES, applyService, blankRule, newId, normalizeNsxCategory, sampleRules } from './model'
+import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, ROUTEROS_CHAINS, SERVICES, applyService, blankRule, newId, normalizeNsxCategory, sampleRules } from './model'
 import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
 import type { Rule, TargetId } from './model'
@@ -89,6 +89,7 @@ export default function App() {
   }, [rules, target, policyName, nsxProject, nsxCategory])
 
   const current = TARGETS.find((t) => t.id === target)!
+  const routeros = current.platform === 'mikrotik'
   const platforms = PLATFORMS
   const formats = TARGETS.filter((t) => t.platform === current.platform)
   const pickPlatform = (platform: string) => {
@@ -155,7 +156,7 @@ export default function App() {
       ? saveFile(toCsv(rules, extras), `firewall-rules-${target}.csv`, 'text/csv')
       : saveFile(toJson(rules, { target, policyName }), `firewall-rules-${target}.json`, 'application/json')
   const doImport = () => {
-    const result = dataFormat === 'csv' ? { rules: parseCsv(csv, extras), error: undefined as string | undefined } : parseJson(csv)
+    const result = dataFormat === 'csv' ? { rules: parseCsv(csv, extras), error: undefined as string | undefined } : parseJson(csv, target)
     if (!result.rules.length) return setImportError(result.error ?? 'No rules found.')
     setRules((rs) => [...rs, ...result.rules])
     setCsv('')
@@ -186,6 +187,12 @@ export default function App() {
             <input type="checkbox" checked={r.logging} onChange={(e) => patch(r.id, { logging: e.target.checked })} />
             <i />
           </label>
+        )
+      case 'routerosChain':
+        return (
+          <select aria-label={`RouterOS chain for ${r.name}`} title={COLUMNS.routerosChain.title} value={r.routerosChain} onChange={(e) => patch(r.id, { routerosChain: e.target.value as Rule['routerosChain'] })}>
+            {ROUTEROS_CHAINS.map((chain) => <option key={chain}>{chain}</option>)}
+          </select>
         )
       case 'profile':
         return (
@@ -225,7 +232,7 @@ export default function App() {
         </a>
         <div>
           <h1>Firewall Forge</h1>
-          <p>One rule model → NSX, SDN, Azure Local, Windows Firewall, Linux (nftables / iptables / firewalld), Cisco and Palo Alto. Runs entirely in your browser.</p>
+          <p>One rule model → NSX, SDN, Azure Local, Windows Firewall, Linux (nftables / iptables / firewalld), Cisco, Palo Alto and MikroTik. Runs entirely in your browser.</p>
         </div>
         <button className="ghost theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label="Toggle light / dark mode">
           {theme === 'dark' ? '☀️' : '🌙'}
@@ -282,7 +289,7 @@ export default function App() {
                 <select className={`pill ${r.action.toLowerCase()}`} value={r.action} onChange={(e) => patch(r.id, { action: e.target.value as Rule['action'] })}>
                   <option>ALLOW</option><option>DROP</option><option>REJECT</option>
                 </select>
-                <select value={r.direction} onChange={(e) => patch(r.id, { direction: e.target.value as Rule['direction'] })}>
+                <select aria-label={`Direction for ${r.name}`} disabled={routeros && r.routerosChain !== 'Auto'} title={routeros ? 'Auto chain uses Direction; an explicit Chain overrides it.' : undefined} value={r.direction} onChange={(e) => patch(r.id, { direction: e.target.value as Rule['direction'] })}>
                   <option>Inbound</option><option>Outbound</option>
                 </select>
                 {extras.map((k) => <div key={k} className="cell">{renderExtra(r, k)}</div>)}
@@ -352,10 +359,11 @@ export default function App() {
               )}
               <div className="actions">
                 <button className="ghost" onClick={share}>Share link</button>
-                <button className="ghost" onClick={download}>Download {current.filename}</button>
-                <button className="primary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
+                <button className="ghost" onClick={download} disabled={routeros && errors.length > 0}>Download {current.filename}</button>
+                <button className="primary" onClick={copy} disabled={routeros && errors.length > 0}>{copied ? 'Copied ✓' : 'Copy'}</button>
               </div>
             </div>
+            {routeros && <div className="notice">RouterOS 7.x · IPv4 filter · {target === 'mikrotik-tf' ? 'Terraform-managed rules and ordering. Apply can update/delete managed rules; changes are not atomic. Review placement relative to existing rules and management access. Configure HTTPS and credentials outside the browser.' : 'append-only .rsc. Review existing rules and management access before importing; reimport duplicates rules.'} Chain: input = to router, output = from router, forward = through router. Auto uses Direction. Policy name is descriptive only.{errors.length > 0 && ' Generation blocked: fix enabled-rule errors first.'}</div>}
             {shared && <div className="notice">{shared}</div>}
             {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
             <pre className="code" dangerouslySetInnerHTML={{ __html: html }} />

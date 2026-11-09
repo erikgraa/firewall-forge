@@ -14,6 +14,296 @@ const opts: { policyName: string; nsxProject?: string; nsxCategory?: string } = 
 const out = (id: string, rules: Rule[] = sampleRules(), o = opts) => TARGETS.find((t) => t.id === id)!.generate(rules, o)
 const rule = (over: Partial<Rule>): Rule => ({ ...blankRule(), name: 'r1', ...over })
 
+describe('MikroTik RouterOS', () => {
+  const commands = (rules: Rule[], options = opts) => out('mikrotik', rules, options).split('\n').filter((line) => line.startsWith('/'))
+  const errors = (rules: Rule[]) => validate(rules, 'mikrotik').filter((issue) => issue.level === 'error')
+  const warnings = (rules: Rule[]) => validate(rules, 'mikrotik').filter((issue) => issue.level === 'warn').map((issue) => issue.message).join('\n')
+
+  it.each([
+    ['Auto', 'Inbound', 'input'], ['Auto', 'Outbound', 'output'],
+    ['input', 'Outbound', 'input'], ['output', 'Inbound', 'output'], ['forward', 'Inbound', 'forward'], ['forward', 'Outbound', 'forward'],
+  ] as const)('maps %s / %s to %s without changing addresses', (routerosChain, direction, effective) => {
+    const rules = [rule({ routerosChain, direction, source: '10.0.0.1', destination: '10.0.0.2' })]
+    expect(errors(rules)).toEqual([])
+    expect(commands(rules)[0]).toContain(`chain=${effective}`)
+    expect(commands(rules)[0]).toContain('src-address=10.0.0.1 dst-address=10.0.0.2')
+  })
+
+  it.each([['ALLOW', 'accept'], ['DROP', 'drop'], ['REJECT', 'reject']] as const)('preserves %s as %s', (action, native) => {
+    const command = commands([rule({ action })])[0]
+    expect(command).toContain(`action=${native}`)
+    expect(command.includes('reject-with=icmp-admin-prohibited')).toBe(action === 'REJECT')
+  })
+
+  it.each(['TCP', 'UDP'] as const)('preserves %s ports, lists and ranges', (protocol) => {
+    const command = commands([rule({ service: 'Custom', protocol, ports: '0, 53, 80-443, 65535' })])[0]
+    expect(command).toContain(`protocol=${protocol.toLowerCase()} dst-port=0,53,80-443,65535`)
+  })
+
+  it.each(['ICMP', 'ANY'] as const)('emits %s without a port constraint', (protocol) => {
+    const command = commands([rule({ service: 'Custom', protocol, ports: '' })])[0]
+    expect(command).not.toContain('dst-port=')
+    expect(command.includes('protocol=icmp')).toBe(protocol === 'ICMP')
+    expect(command.includes('protocol=')).toBe(protocol !== 'ANY')
+  })
+
+  it('expands source × destination in list order and keeps each rule contiguous', () => {
+    const rules = [rule({ name: 'first', source: ' 10.0.0.1, 10.0.0.2 ', destination: '192.0.2.1, 192.0.2.2' }), rule({ name: 'last' })]
+    const lines = commands(rules)
+    expect(lines).toHaveLength(5)
+    expect(lines.slice(0, 4).map((line) => line.match(/src-address=(\S+) dst-address=(\S+)/)?.slice(1))).toEqual([
+      ['10.0.0.1', '192.0.2.1'], ['10.0.0.1', '192.0.2.2'], ['10.0.0.2', '192.0.2.1'], ['10.0.0.2', '192.0.2.2'],
+    ])
+    expect(lines.slice(0, 4).every((line) => line.includes('comment="first"'))).toBe(true)
+    expect(lines[4]).toContain('comment="last"')
+    expect(commands([...rules].reverse())[0]).toContain('comment="last"')
+  })
+
+  it('expands RFC1918 and public DNS, omits Any and supports /0 and /32', () => {
+    const lines = commands([rule({ source: 'Private networks (RFC1918)', destination: 'Public DNS (1.1.1.1, 8.8.8.8)' })])
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toContain('src-address=10.0.0.0/8 dst-address=1.1.1.1')
+    expect(lines[5]).toContain('src-address=192.168.0.0/16 dst-address=8.8.8.8')
+    expect(commands([rule({ source: 'Any', destination: '*' })])[0]).not.toMatch(/(?:src|dst)-address=/)
+    expect(commands([rule({ source: '0.0.0.0/0', destination: '255.255.255.255/32' })])[0]).toContain('src-address=0.0.0.0/0 dst-address=255.255.255.255/32')
+  })
+
+  it('appends only filter adds, without implicit return traffic, NAT or default deny', () => {
+    const lines = commands([rule({})])
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^\/ip firewall filter add /)
+    expect(lines[0]).not.toMatch(/remove|reset|place-before|connection-state|fasttrack|jump|nat|priority=/)
+    expect(warnings([rule({})])).toMatch(/no existing rules are removed or reordered/i)
+    expect(warnings([])).toContain('Reimport creates duplicates')
+    expect(warnings([])).toContain('accepts packets when no filter matches')
+  })
+
+  it('escapes names, notes, log prefixes, policy labels and control characters', () => {
+    const name = 'r"\\$x; [/system reboot]\nnext\r\t\u0000'
+    const notes = 'note "quoted" \\ $foo # comment\n/system reboot'
+    const lines = commands([rule({ name, notes, logging: true })], { policyName: 'policy\n/system reboot\r\\$x' })
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain(String.raw`log=yes log-prefix="r\"\\\$x; [/system reboot]\nnext\r\t\00"`)
+    expect(lines[0]).toContain(String.raw`comment="r\"\\\$x; [/system reboot]\nnext\r\t\00: note \"quoted\" \\ \$foo # comment\n/system reboot"`)
+    expect(out('mikrotik', [rule({ name, notes, logging: true })], { policyName: 'policy\n/system reboot\r\\$x' })).toContain(String.raw`# Policy label: "policy\n/system reboot\r\\\$x"`)
+    expect(commands([rule({ logging: false })])[0]).toContain('log=no')
+    expect(commands([rule({ logging: false })])[0]).not.toContain('log-prefix=')
+  })
+
+  it('encodes non-ASCII control characters as uppercase UTF-8 byte escapes', () => {
+    expect(commands([rule({ notes: '\u0007\u001b\u007f\u0085\u2028é' })])[0]).toContain(String.raw`comment="r1: \07\1B\7F\C2\85\E2\80\A8\C3\A9"`)
+  })
+
+  it.each([
+    '', 'Internet', '2001:db8::1', 'example.com', 'group-name', '256.0.0.1', '1.2.3.4/33', '1.2.3.4/-1', '01.2.3.4',
+    'Any,10.0.0.1', '*,10.0.0.1', '10.0.0.1,', ',10.0.0.1', '10.0.0.1,,10.0.0.2', '10.0.0.1,bad', 'bad,10.0.0.1', '10.0.0.1; /system reboot',
+  ])('blocks every invalid source and destination: %s', (address) => {
+    for (const field of ['source', 'destination']) {
+      const rules = [rule({ name: 'valid' }), rule({ name: 'invalid', [field]: address })]
+      expect(errors(rules).length).toBeGreaterThan(0)
+      expect(commands(rules)).toEqual([])
+      expect(out('mikrotik', rules)).toContain('# BLOCKED:')
+    }
+  })
+
+  it.each(['65536', '443-80', '1-65536', '80,', ',80', '80,,443', '-1', 'abc', '1:2', '1 - 2', '80; /system reboot'])('blocks invalid ports: %s', (ports) => {
+    const rules = [rule({ ports, service: 'Custom' })]
+    expect(errors(rules).length).toBeGreaterThan(0)
+    expect(commands(rules)).toEqual([])
+  })
+
+  it.each(['ICMP', 'ANY'] as const)('does not discard %s port constraints', (protocol) => {
+    const rules = [rule({ protocol, ports: '80', service: 'Custom' })]
+    expect(errors(rules).some((issue) => issue.message.includes('ports require TCP or UDP'))).toBe(true)
+    expect(commands(rules)).toEqual([])
+  })
+
+  it.each([
+    { routerosChain: 'custom' }, { routerosChain: '' }, { direction: 'Forward' }, { action: 'JUMP' }, { protocol: 'SCTP' }, { service: 'unknown' },
+    { service: 'HTTPS (TCP 443)', ports: '80' }, { name: '' }, { program: 'app.exe' }, { scope: '/infra/groups/x' },
+    { zone: 'public' }, { srcZone: 'trust' }, { dstZone: 'untrust' }, { profile: 'Private' }, { permanent: false },
+  ])('blocks unsupported enabled rule options: %j', (overrides) => {
+    const rules = [rule(overrides as Partial<Rule>)]
+    expect(errors(rules).length).toBeGreaterThan(0)
+    expect(commands(rules)).toEqual([])
+  })
+
+  it('ignores disabled errors but blocks duplicate enabled names', () => {
+    const invalid = rule({ enabled: false, source: 'bad', routerosChain: 'invalid' as Rule['routerosChain'] })
+    expect(errors([rule({}), invalid])).toEqual([])
+    expect(commands([rule({}), invalid])).toHaveLength(1)
+    expect(commands([invalid])).toEqual([])
+    expect(commands([])).toEqual([])
+    expect(errors([rule({}), rule({})])).toHaveLength(1)
+    expect(commands([rule({}), rule({})])).toEqual([])
+  })
+
+  it('does not make blocked diagnostics executable even with injected newlines', () => {
+    const text = out('mikrotik', [rule({ name: 'evil\n/system reboot\r:put "x"', source: 'bad\n/system reboot' })], { policyName: 'evil\n/system reboot' })
+    expect(text.split('\n').filter(Boolean).every((line) => line.startsWith('#'))).toBe(true)
+    expect(text).toContain(String.raw`evil\n/system reboot\r:put \"x\"`)
+  })
+
+  it('uses table ordering instead of RouterOS packet-priority matching', () => {
+    const rules = [rule({ priority: '200' })]
+    expect(errors(rules)).toEqual([])
+    expect(warnings(rules)).toContain('priority matches packet priority')
+    expect(commands(rules)[0]).not.toContain('priority=')
+  })
+
+  it('warns only when a true catch-all precedes another enabled rule in the same chain', () => {
+    const drop = rule({ name: 'drop', action: 'DROP', service: 'Custom', protocol: 'ANY', ports: '', routerosChain: 'input' })
+    expect(warnings([drop, rule({ routerosChain: 'output' })])).not.toContain('later rules in that chain')
+    expect(warnings([drop, rule({ routerosChain: 'forward' })])).not.toContain('later rules in that chain')
+    expect(warnings([drop, rule({})])).toContain('later rules in that chain never match')
+    expect(warnings([{ ...drop, protocol: 'TCP' }, rule({})])).not.toContain('later rules in that chain')
+    expect(warnings([drop, rule({ enabled: false })])).not.toContain('later rules in that chain')
+    expect(warnings([{ ...drop, action: 'ALLOW' }, rule({})])).toContain('catch-all allow in input')
+    expect(warnings([{ ...drop, source: '0.0.0.0/0', destination: '*', routerosChain: 'forward' }, rule({ routerosChain: 'forward' })])).toContain('catch-all drop in forward')
+  })
+
+  it.each(['Auto', 'input', 'forward', 'output'] as const)('roundtrips chain %s through CSV, JSON and share links', async (routerosChain) => {
+    const original = rule({ routerosChain, direction: 'Outbound', notes: 'chain note', logging: true })
+    const { id: _id, ...expected } = original
+    expect(parseCsv(toCsv([original], EXTRA_COLUMNS.mikrotik))[0]).toMatchObject(expected)
+    expect(parseJson(toJson([original], { target: 'mikrotik', policyName: 'policy' })).rules[0]).toMatchObject(expected)
+    const decoded = await decodeState(await encodeState({ rules: [original], target: 'mikrotik', policyName: 'policy' }))
+    expect(decoded?.target).toBe('mikrotik')
+    expect(decoded?.rules[0]).toMatchObject(expected)
+  })
+
+  it('defaults old CSV/JSON rules and share links to Auto without changing Direction', async () => {
+    const { routerosChain: _chain, ...old } = rule({ direction: 'Outbound' })
+    expect(parseCsv('name,source,destination,service,ports,action,direction\nold,Any,Any,TCP,443,ALLOW,Outbound')[0]).toMatchObject({ routerosChain: 'Auto', direction: 'Outbound' })
+    expect(parseJson(JSON.stringify([old])).rules[0]).toMatchObject({ routerosChain: 'Auto', direction: 'Outbound' })
+    const decoded = await decodeState(await encodeState({ rules: [old as Rule], target: 'mikrotik', policyName: 'old' }))
+    expect(decoded?.rules[0]).toMatchObject({ routerosChain: 'Auto', direction: 'Outbound' })
+    expect(commands([old as Rule])[0]).toContain('chain=output')
+  })
+
+  it.each([
+    ['action', 'JUMP'], ['direction', 'Forward'], ['protocol', 'SCTP'], ['source', null], ['ports', 443], ['logging', 'yes'], ['profile', 'unknown'],
+  ])('rejects invalid JSON %s instead of substituting a RouterOS default', (field, value) => {
+    const rules = [{ ...rule({}), [field]: value }]
+    expect(parseJson(JSON.stringify(rules), 'mikrotik')).toMatchObject({ rules: [], error: expect.stringContaining(`invalid ${field}`) })
+    expect(parseJson(JSON.stringify({ target: 'mikrotik', rules })).error).toContain(`invalid ${field}`)
+  })
+
+  it.each([
+    ['source', ''], ['action', 'JUMP'], ['direction', 'Forward'], ['service', 'SCTP'], ['profile', 'unknown'], ['ports', '22'],
+  ])('blocks invalid or conflicting CSV %s without changing its meaning', (field, value) => {
+    const fields = ['name', 'source', 'destination', 'service', 'ports', 'action', 'direction', 'profile']
+    const cells = ['imported', 'Any', 'Any', 'HTTPS (TCP 443)', '', 'ALLOW', 'Inbound', 'Any']
+    cells[fields.indexOf(field)] = value
+    const imported = parseCsv(`${fields.join(',')}\n${cells.join(',')}`, EXTRA_COLUMNS.mikrotik)
+    expect(commands(imported)).toEqual([])
+  })
+
+  it('does not silently turn invalid imported chains into Auto', () => {
+    expect(parseJson(JSON.stringify([rule({ routerosChain: 'custom' as Rule['routerosChain'] })]))).toMatchObject({ rules: [], error: expect.stringContaining('Invalid RouterOS chain') })
+    expect(parseJson(JSON.stringify([{ routerosChain: null }])).error).toContain('Invalid RouterOS chain')
+    const csv = 'name,source,destination,service,ports,routerosChain\nr1,Any,Any,TCP,443,custom'
+    expect(commands(parseCsv(csv))).toEqual([])
+    expect(parseCsv(csv.replace('custom', 'FORWARD'))[0].routerosChain).toBe('forward')
+  })
+})
+
+describe('MikroTik Terraform', () => {
+  const resources = (text: string) => [...text.matchAll(/resource "routeros_ip_firewall_filter" "([^"]+)" \{\n([\s\S]*?)\n\}/g)]
+
+  it('uses the configured community provider and secure external credentials', () => {
+    const text = out('mikrotik-tf')
+    expect(text).toContain(requiredProviders('routeros'))
+    expect(text).toContain('source  = "terraform-routeros/routeros"')
+    expect(text).toContain('insecure = false')
+    expect(text).toContain('password = var.routeros_password')
+    expect(text).toContain('sensitive = true')
+    expect(text).toContain('can(regex("^https://", var.routeros_hosturl))')
+    expect(text).not.toMatch(/local-exec|remote-exec|\/ip firewall filter add|place_before|connection_state|priority\s*=/)
+    expect(validate([], 'mikrotik-tf').map((issue) => issue.message).join('\n')).toContain('apply/destroy can update/delete')
+    expect(text).not.toContain('Reimport creates duplicates')
+  })
+
+  it.each([
+    ['Auto', 'Inbound', 'input'], ['Auto', 'Outbound', 'output'], ['forward', 'Outbound', 'forward'], ['input', 'Outbound', 'input'],
+  ] as const)('preserves %s / %s as chain %s', (routerosChain, direction, chain) => {
+    expect(out('mikrotik-tf', [rule({ routerosChain, direction })])).toMatch(new RegExp(`chain\\s*= "${chain}"`))
+  })
+
+  it.each([['ALLOW', 'accept'], ['DROP', 'drop'], ['REJECT', 'reject']] as const)('preserves %s and explicit rejection behavior', (action, native) => {
+    const text = out('mikrotik-tf', [rule({ action, logging: true, notes: 'note' })])
+    expect(text).toMatch(new RegExp(`action\\s*= "${native}"`))
+    expect(text.includes('reject_with')).toBe(action === 'REJECT')
+    if (action === 'REJECT') expect(text).toContain('"icmp-admin-prohibited"')
+    expect(text).toMatch(/log\s*= true/)
+    expect(text).toMatch(/log_prefix\s*= "r1"/)
+    expect(text).toMatch(/comment\s*= "r1: note"/)
+  })
+
+  it('preserves Cartesian expansions, port ranges and creation/managed order', () => {
+    const text = out('mikrotik-tf', [rule({ source: 'Private networks (RFC1918)', destination: 'Public DNS (1.1.1.1, 8.8.8.8)', service: 'Custom', protocol: 'UDP', ports: '53, 100-200' })])
+    const blocks = resources(text)
+    expect(blocks).toHaveLength(6)
+    expect(blocks[0][2]).toMatch(/src_address\s*= "10.0.0.0\/8"/)
+    expect(blocks[5][2]).toMatch(/dst_address\s*= "8.8.8.8"/)
+    blocks.forEach((block, index) => {
+      expect(block[2]).toMatch(/dst_port\s*= "53,100-200"/)
+      expect(block[2]).toMatch(/disabled\s*= false/)
+      if (index) expect(block[2]).toContain(`depends_on  = [routeros_ip_firewall_filter.${blocks[index - 1][1]}]`)
+    })
+    const order = text.split('resource "routeros_move_items"')[1]
+    expect(order).toContain('resource_path = "/ip/firewall/filter"')
+    expect([...order.matchAll(/routeros_ip_firewall_filter\.([\w]+)\.id/g)].map((match) => match[1])).toEqual(blocks.map((block) => block[1]))
+  })
+
+  it('keeps collision-free resource names stable across reordering', () => {
+    const rules = [rule({ name: 'a-b' }), rule({ name: 'a_b' }), rule({ name: 'é' }), rule({ name: '😀' })]
+    const first = resources(out('mikrotik-tf', rules)).map((block) => block[1])
+        expect(new Set(first).size).toBe(rules.length)
+    expect(resources(out('mikrotik-tf', [...rules].reverse())).map((block) => block[1])).toEqual([...first].reverse())
+  })
+
+  it.each(['ICMP', 'ANY'] as const)('omits ports and wildcard addresses for %s', (protocol) => {
+    const text = resources(out('mikrotik-tf', [rule({ service: 'Custom', protocol, ports: '' })]))[0][2]
+    expect(text).not.toMatch(/dst_port|src_address|dst_address/)
+    expect(text.includes('protocol')).toBe(protocol !== 'ANY')
+  })
+
+  it('escapes HCL template directives, quotes, newlines and Unicode', () => {
+    const text = out('mikrotik-tf', [rule({ name: 'r${secret}', notes: '"\\\n%{if true} café', logging: true })], { policyName: '${policy}' })
+    expect(text).toContain('$${secret}')
+    expect(text).toContain('%%{if true}')
+    expect(text).toContain('café')
+    expect(text).toContain('\\n')
+    expect(text).toContain('$${policy}')
+    expect(resources(text)).toHaveLength(1)
+  })
+
+  it('rejects unsafe rules with a version guard instead of a destructive empty configuration', () => {
+    for (const invalid of [rule({ source: 'Internet' }), rule({ ports: '443,', service: 'Custom' }), rule({ scope: '/group' }), rule({ permanent: false })]) {
+      const text = out('mikrotik-tf', [rule({ name: 'valid' }), invalid])
+      expect(text).toContain('# BLOCKED:')
+      expect(text).toContain('required_version = "< 0.0.0"')
+      expect(text).not.toContain('resource "')
+      expect(validate([invalid], 'mikrotik-tf').some((issue) => issue.level === 'error')).toBe(true)
+    }
+  })
+
+  it('omits disabled rules and avoids invalid zero/single-item moves', () => {
+    for (const rules of [[], [rule({})], [rule({}), rule({ name: 'disabled', enabled: false, source: 'bad' })]])
+      expect(out('mikrotik-tf', rules)).not.toContain('routeros_move_items')
+    expect(resources(out('mikrotik-tf', [rule({ enabled: false, source: 'bad' })]))).toHaveLength(0)
+  })
+
+  it('preserves Terraform format and chain across serialization and rejects invalid JSON', async () => {
+    const original = rule({ routerosChain: 'forward' })
+    expect(parseCsv(toCsv([original], EXTRA_COLUMNS['mikrotik-tf']), EXTRA_COLUMNS['mikrotik-tf'])[0]).toMatchObject({ routerosChain: 'forward' })
+    expect(parseJson(toJson([original], { target: 'mikrotik-tf', policyName: 'tf' })).rules[0]).toMatchObject({ routerosChain: 'forward' })
+    expect((await decodeState(await encodeState({ rules: [original], target: 'mikrotik-tf', policyName: 'tf' })))?.target).toBe('mikrotik-tf')
+    expect(parseJson('[{"action":"JUMP"}]', 'mikrotik-tf').error).toContain('invalid action')
+  })
+})
+
 describe('generators (snapshots)', () => {
   for (const t of TARGETS) {
     it(`${t.id} output is stable`, () => {

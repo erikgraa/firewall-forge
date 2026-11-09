@@ -1,7 +1,7 @@
 export type Action = 'ALLOW' | 'DROP' | 'REJECT'
 export type Direction = 'Inbound' | 'Outbound'
 export type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'ANY'
-export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk' | 'azfw-tf' | 'azfw-bicep'
+export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk' | 'azfw-tf' | 'azfw-bicep' | 'mikrotik' | 'mikrotik-tf'
 
 export interface Rule {
   id: string
@@ -24,7 +24,12 @@ export interface Rule {
   permanent: boolean
   srcZone: string
   dstZone: string
+  routerosChain: 'Auto' | 'input' | 'forward' | 'output'
 }
+
+export const ROUTEROS_CHAINS = ['Auto', 'input', 'forward', 'output'] as const
+export const routerosChain = (rule: Rule): 'input' | 'forward' | 'output' =>
+  !rule.routerosChain || rule.routerosChain === 'Auto' ? (rule.direction === 'Inbound' ? 'input' : 'output') : rule.routerosChain
 
 export interface Endpoint {
   nsx: string[]
@@ -90,6 +95,7 @@ export const blankRule = (): Rule => ({
   permanent: true,
   srcZone: '',
   dstZone: '',
+  routerosChain: 'Auto',
 })
 
 export const sampleRules = (): Rule[] => [
@@ -119,6 +125,7 @@ export const baseTarget = (t: TargetId): TargetId => {
   if (t === 'nsx-ps' || t === 'nsx-sdk') return 'nsx'
   if (t === 'panos-1x') return 'panos'
   if (t === 'cisco-tf') return 'cisco'
+  if (t === 'mikrotik-tf') return 'mikrotik'
   if (t === 'azfw-bicep') return 'azfw-tf'
   return t.endsWith('-ansible') ? (t.replace('-ansible', '') as TargetId) : t
 }

@@ -1,5 +1,6 @@
 import { ENDPOINTS, SERVICES } from './model'
 import { requiredProviders } from './providers'
+import { mikrotik, mikrotikTerraform } from './routeros'
 import { DEFAULT_NSX_CATEGORY } from './model'
 import type { Rule, TargetId } from './model'
 
@@ -1222,6 +1223,8 @@ export const TARGETS: Target[] = [
   { id: 'panos', platform: 'panos', label: 'Palo Alto', format: 'Terraform 2.x', filename: 'panos.tf', generate: panos },
   { id: 'panos-ansible', platform: 'panos', label: 'Palo Alto', format: 'Ansible', filename: 'panos.yml', generate: panosAnsible },
   { id: 'panos-1x', platform: 'panos', label: 'Palo Alto', format: 'Terraform 1.x', filename: 'panos-1x.tf', generate: panos1 },
+  { id: 'mikrotik', platform: 'mikrotik', label: 'MikroTik RouterOS', format: 'RouterOS (.rsc)', filename: 'mikrotik-firewall.rsc', generate: mikrotik },
+  { id: 'mikrotik-tf', platform: 'mikrotik', label: 'MikroTik RouterOS', format: 'Terraform', filename: 'mikrotik-firewall.tf', generate: mikrotikTerraform },
 ]
 
 export const PLATFORMS = TARGETS.filter((t, i) => TARGETS.findIndex((x) => x.platform === t.platform) === i).map((t) => ({ platform: t.platform, label: t.label }))

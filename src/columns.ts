@@ -1,6 +1,6 @@
 import type { Rule, TargetId } from './model'
 
-export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes' | 'srcZone' | 'dstZone' | 'permanent'
+export type ColKey = 'logging' | 'priority' | 'profile' | 'program' | 'zone' | 'scope' | 'notes' | 'srcZone' | 'dstZone' | 'permanent' | 'routerosChain'
 
 export interface ColMeta {
   label: string
@@ -17,11 +17,14 @@ export const COLUMNS: Record<ColKey, ColMeta> = {
   zone: { label: 'Zone', width: '96px', title: 'firewalld zone (blank = public)' },
   scope: { label: 'Applied to', width: 'minmax(120px, 1fr)', title: 'NSX group path the policy applies to' },
   notes: { label: 'Notes', width: 'minmax(120px, 1fr)' },
+  routerosChain: { label: 'Chain', width: '110px', title: 'Auto: Inbound → input (to router), Outbound → output (from router). Forward: traffic through router.' },
   srcZone: { label: 'From zone', width: '100px', title: 'Source zone (Palo Alto / Cisco FMC); blank = any' },
   dstZone: { label: 'To zone', width: '100px', title: 'Destination zone (Palo Alto / Cisco FMC); blank = any' },
 }
 
 export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
+  mikrotik: ['routerosChain', 'logging', 'notes'],
+  'mikrotik-tf': ['routerosChain', 'logging', 'notes'],
   nsx: ['scope', 'logging', 'notes'],
   'nsx-ps': ['scope', 'logging', 'notes'],
   'nsx-sdk': ['scope', 'logging', 'notes'],

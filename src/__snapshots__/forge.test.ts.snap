@@ -636,6 +636,149 @@ exports[`generators (snapshots) > iptables-ansible output is stable 1`] = `
 "
 `;
 
+exports[`generators (snapshots) > mikrotik output is stable 1`] = `
+"# Firewall Forge — MikroTik RouterOS 7.x IPv4 filter
+# Policy label: "generated"
+# WARNING: RouterOS 7.x IPv4 filters only. Auto maps Inbound \\E2\\86\\92 input (to router), Outbound \\E2\\86\\92 output (from router); use forward for traffic through the router. Explicit Chain overrides Direction.
+# WARNING: Append-only: no existing rules are removed or reordered. Reimport creates duplicates; earlier router rules may shadow the generated rules. Policy / ACL name is descriptive only.
+# WARNING: RouterOS accepts packets when no filter matches. No default deny, established/related accepts or return-traffic rules are added. Existing established/related accepts and FastTrack may bypass later denies; bridge and hardware-offloaded traffic may bypass IP filters. Review packet flow and management access before importing.
+
+/ip firewall filter add chain=input action=accept src-address=10.0.0.0/8 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
+/ip firewall filter add chain=input action=accept src-address=172.16.0.0/12 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
+/ip firewall filter add chain=input action=accept src-address=192.168.0.0/16 dst-address=10.10.10.0/24 protocol=tcp dst-port=443 log=no comment="web-in"
+/ip firewall filter add chain=output action=accept dst-address=1.1.1.1 protocol=udp dst-port=53 log=no comment="dns-out"
+/ip firewall filter add chain=output action=accept dst-address=8.8.8.8 protocol=udp dst-port=53 log=no comment="dns-out"
+/ip firewall filter add chain=input action=drop log=no comment="deny-rest"
+"
+`;
+
+exports[`generators (snapshots) > mikrotik-tf output is stable 1`] = `
+"# Firewall Forge — MikroTik RouterOS 7.x IPv4 filter (Terraform)
+# Policy label: "generated"
+# WARNING: RouterOS 7.x IPv4 filters only. Auto maps Inbound \\E2\\86\\92 input (to router), Outbound \\E2\\86\\92 output (from router); use forward for traffic through the router. Explicit Chain overrides Direction.
+# WARNING: Terraform owns generated rules in state: apply/destroy can update/delete them, including rules removed or disabled in the table. Native ordering moves only generated rule IDs; placement relative to unmanaged rules is not guaranteed. Changes are not atomic. Preserve state, review the plan and management access. Policy / ACL name is descriptive only.
+# WARNING: RouterOS accepts packets when no filter matches. No default deny, established/related accepts or return-traffic rules are added. Existing established/related accepts and FastTrack may bypass later denies; bridge and hardware-offloaded traffic may bypass IP filters. Review packet flow and management access before importing.
+
+terraform {
+  required_providers {
+    routeros = {
+      source  = "terraform-routeros/routeros"
+      version = "~> 1.99"
+    }
+  }
+}
+
+# Configure credentials outside the browser; do not commit passwords or state.
+variable "routeros_hosturl" {
+  type        = string
+  description = "HTTPS URL of the RouterOS REST endpoint"
+  validation {
+    condition     = can(regex("^https://", var.routeros_hosturl))
+    error_message = "Use an HTTPS RouterOS endpoint with a trusted certificate."
+  }
+}
+
+variable "routeros_username" {
+  type = string
+}
+
+variable "routeros_password" {
+  type      = string
+  sensitive = true
+}
+
+provider "routeros" {
+  hosturl  = var.routeros_hosturl
+  username = var.routeros_username
+  password = var.routeros_password
+  insecure = false
+}
+
+resource "routeros_ip_firewall_filter" "rule_007700650062002d0069006e_0_0" {
+  chain       = "input"
+  action      = "accept"
+  src_address = "10.0.0.0/8"
+  dst_address = "10.10.10.0/24"
+  protocol    = "tcp"
+  dst_port    = "443"
+  disabled    = false
+  log         = false
+  comment     = "web-in"
+}
+
+resource "routeros_ip_firewall_filter" "rule_007700650062002d0069006e_1_0" {
+  chain       = "input"
+  action      = "accept"
+  src_address = "172.16.0.0/12"
+  dst_address = "10.10.10.0/24"
+  protocol    = "tcp"
+  dst_port    = "443"
+  disabled    = false
+  log         = false
+  comment     = "web-in"
+  depends_on  = [routeros_ip_firewall_filter.rule_007700650062002d0069006e_0_0]
+}
+
+resource "routeros_ip_firewall_filter" "rule_007700650062002d0069006e_2_0" {
+  chain       = "input"
+  action      = "accept"
+  src_address = "192.168.0.0/16"
+  dst_address = "10.10.10.0/24"
+  protocol    = "tcp"
+  dst_port    = "443"
+  disabled    = false
+  log         = false
+  comment     = "web-in"
+  depends_on  = [routeros_ip_firewall_filter.rule_007700650062002d0069006e_1_0]
+}
+
+resource "routeros_ip_firewall_filter" "rule_0064006e0073002d006f00750074_0_0" {
+  chain       = "output"
+  action      = "accept"
+  dst_address = "1.1.1.1"
+  protocol    = "udp"
+  dst_port    = "53"
+  disabled    = false
+  log         = false
+  comment     = "dns-out"
+  depends_on  = [routeros_ip_firewall_filter.rule_007700650062002d0069006e_2_0]
+}
+
+resource "routeros_ip_firewall_filter" "rule_0064006e0073002d006f00750074_0_1" {
+  chain       = "output"
+  action      = "accept"
+  dst_address = "8.8.8.8"
+  protocol    = "udp"
+  dst_port    = "53"
+  disabled    = false
+  log         = false
+  comment     = "dns-out"
+  depends_on  = [routeros_ip_firewall_filter.rule_0064006e0073002d006f00750074_0_0]
+}
+
+resource "routeros_ip_firewall_filter" "rule_00640065006e0079002d0072006500730074_0_0" {
+  chain      = "input"
+  action     = "drop"
+  disabled   = false
+  log        = false
+  comment    = "deny-rest"
+  depends_on = [routeros_ip_firewall_filter.rule_0064006e0073002d006f00750074_0_1]
+}
+
+resource "routeros_move_items" "generated_order" {
+  resource_path = "/ip/firewall/filter"
+  sequence = [
+    routeros_ip_firewall_filter.rule_007700650062002d0069006e_0_0.id,
+    routeros_ip_firewall_filter.rule_007700650062002d0069006e_1_0.id,
+    routeros_ip_firewall_filter.rule_007700650062002d0069006e_2_0.id,
+    routeros_ip_firewall_filter.rule_0064006e0073002d006f00750074_0_0.id,
+    routeros_ip_firewall_filter.rule_0064006e0073002d006f00750074_0_1.id,
+    routeros_ip_firewall_filter.rule_00640065006e0079002d0072006500730074_0_0.id,
+  ]
+}
+"
+`;
+
 exports[`generators (snapshots) > nftables output is stable 1`] = `
 "#!/usr/sbin/nft -f
 # Chains default to "policy accept"; end with an explicit drop rule for a default-deny stance.
