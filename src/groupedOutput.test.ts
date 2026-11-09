@@ -60,12 +60,12 @@ describe('Windows grouping is presentation only', () => {
     expect(generate('windows', rules, runs).code).toBe(`${header}# Group: Management\n${commands}`)
   })
 
-  it('keeps enabled commands adjacent across disabled entries and skips disabled-only sections', () => {
+  it('keeps disabled commands in place and retains disabled-only sections', () => {
     const data = [rule('a'), rule('disabled', { enabled: false }), rule('b'), rule('empty', { enabled: false }), rule('c')]
     const runs = sectionRuns(data, { a: 'first', disabled: 'first', b: 'first', empty: 'hidden', c: 'second' })
     const header = original('windows', [])
     const command = (entry: Rule) => original('windows', [entry]).slice(header.length, -1)
-    expect(generate('windows', data, runs).code).toBe(`${header}# Group: Management\n${command(data[0])}\n${command(data[2])}\n\n# Group: Applications\n${command(data[4])}\n`)
+    expect(generate('windows', data, runs).code).toBe(`${header}# Group: Management\n${command(data[0])}\n${command(data[1])}\n${command(data[2])}\n\n# Group: hidden\n${command(data[3])}\n\n# Group: Applications\n${command(data[4])}\n`)
   })
 
   it('preserves section spacing and adjacent rules within continued runs', () => {
@@ -73,7 +73,7 @@ describe('Windows grouping is presentation only', () => {
     const runs = sectionRuns(data, { a: 'first', b: 'first', c: 'second', d: 'first', disabled: 'first', e: 'first' })
     const header = original('windows', [])
     const command = (entry: Rule) => original('windows', [entry]).slice(header.length, -1)
-    expect(generate('windows', data, runs).code).toBe(`${header}# Group: Management\n${command(data[0])}\n${command(data[1])}\n\n# Group: Applications\n${command(data[2])}\n\n# Group: Management (continued)\n${command(data[3])}\n${command(data[5])}\n`)
+    expect(generate('windows', data, runs).code).toBe(`${header}# Group: Management\n${command(data[0])}\n${command(data[1])}\n\n# Group: Applications\n${command(data[2])}\n\n# Group: Management (continued)\n${command(data[3])}\n${command(data[4])}\n${command(data[5])}\n`)
   })
 
   it('uses array order, not section or entry order', () => {
@@ -88,13 +88,14 @@ describe('Windows grouping is presentation only', () => {
     expect(code.match(/# Group:/g)).toHaveLength(3)
   })
 
-  it('omits disabled rules and disabled-only headings', () => {
+  it('retains disabled rules and disabled-only headings', () => {
     const data = rules.map((entry) => ({ ...entry, enabled: entry.id === 'three' }))
     const code = generate('windows', data, sectionRuns(data, membership)).code
-    expect(code).not.toContain('# Group: Management')
-    expect(code).not.toContain("-DisplayName 'one'")
-    expect(code.match(/# Group:/g)).toHaveLength(1)
-    expect(generate('windows', data.map((entry) => ({ ...entry, enabled: false })), []).code).toBe('')
+    expect(code).toContain('# Group: Management')
+    expect(code).toContain("-DisplayName 'one'")
+    expect(code.match(/# Group:/g)).toHaveLength(2)
+    expect(code.match(/-Enabled False/g)).toHaveLength(2)
+    expect(generate('windows', data.map((entry) => ({ ...entry, enabled: false })), []).code.match(/-Enabled False/g)).toHaveLength(3)
   })
 
   it('keeps every line of arbitrary multiline titles commented', () => {
@@ -189,15 +190,16 @@ describe('separate NSX policies', () => {
     expect(ps).not.toContain('\nInvoke-Expression bad')
   })
 
-  it.each(['nsx', 'nsx-ps', 'nsx-sdk'] as const)('%s omits disabled and empty sections without empty policies', (target) => {
+  it.each(['nsx', 'nsx-ps', 'nsx-sdk'] as const)('%s retains disabled-only sections but omits truly empty sections', (target) => {
     const data = rules.map((entry) => ({ ...entry, enabled: entry.id === 'three' }))
     const runs = [...sectionRuns(data, membership), { key: 'empty', group: 'empty', continued: false, entries: [] }]
     const code = generate(target, data, runs).code
     const ids = policyIds(target, code)
-    expect(ids).toHaveLength(1)
-    expect(code).not.toContain('Management')
+    expect(ids).toHaveLength(2)
+    expect(code).toContain('Management')
     const disabled = data.map((entry) => ({ ...entry, enabled: false }))
-    expect(generate(target, disabled, sectionRuns(disabled, membership)).code).toBe('')
+    expect(policyIds(target, generate(target, disabled, sectionRuns(disabled, membership)).code)).toEqual(ids)
+    if (target === 'nsx-ps') expect(restBodies(code).map((body) => body.rules.map((entry) => entry.disabled))).toEqual([[true, true], [false]])
   })
 
   it.each(['nsx', 'nsx-ps', 'nsx-sdk'] as const)('%s retains no-project/default-category behavior', (target) => {
@@ -266,7 +268,7 @@ describe('separate NSX policies', () => {
     const output = generate(target, data, sectionRuns(data, { one: 'first', two: 'second', three: 'first' }))
     expect(output.blocked).toBe(true)
     const disabled = data.map((entry) => ({ ...entry, enabled: false }))
-    expect(generate(target, disabled, sectionRuns(disabled, { one: 'first', two: 'second', three: 'first' })).code).toBe('')
+    expect(generate(target, disabled, sectionRuns(disabled, { one: 'first', two: 'second', three: 'first' })).blocked).toBe(true)
   })
 
   it.each(['nsx', 'nsx-ps', 'nsx-sdk'] as const)('%s blocks duplicate or mismatched metadata indices', (target) => {

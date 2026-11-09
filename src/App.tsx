@@ -81,7 +81,7 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState<string | null>(null)
-  const [templateNotice, setTemplateNotice] = useState('')
+  const [templateNotice, setTemplateNotice] = useState<{ message: string; ruleIds: string[] } | null>(null)
   const [membership, setMembership] = useState<Record<string, string>>({})
   const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({ unsectioned: 'Unsectioned' })
   const [nsxSeparatePolicies, setNsxSeparatePolicies] = useState(false)
@@ -90,7 +90,10 @@ export default function App() {
     setRules((current) => appendToUnsectioned(current, added, membership))
     setSelectedRuleId(added[0].id)
     setWorkspaceView('rules')
-    setTemplateNotice(`${title}: added ${added.length} disabled rule${added.length === 1 ? '' : 's'} to the end of Unsectioned, which may precede named sections. Addresses start as Any. Set source and destination, review direction, chain and scope, then enable when ready.`)
+    setTemplateNotice({
+      message: `${title}: added ${added.length} disabled rule${added.length === 1 ? '' : 's'} to the end of Unsectioned, which may precede named sections. Addresses start as Any. Set source and destination, review direction, chain and scope, then enable when ready.`,
+      ruleIds: added.map((rule) => rule.id),
+    })
   }
   const addRule = (groupId = 'unsectioned') => {
     if (!Object.hasOwn(sectionTitles, groupId)) return
@@ -166,8 +169,15 @@ export default function App() {
   const code = output.code
   const html = useMemo(() => highlight(code), [code])
 
-  const patch = (id: string, change: Partial<Rule>) =>
+  const patch = (id: string, change: Partial<Rule>) => {
+    const rule = rules.find((r) => r.id === id)
+    if (templateNotice?.ruleIds.includes(id) && rule &&
+      ((change.source !== undefined && change.source !== rule.source) ||
+       (change.destination !== undefined && change.destination !== rule.destination))) {
+      setTemplateNotice(null)
+    }
     setRules((rs) => rs.map((r) => (r.id === id ? { ...r, ...change } : r)))
+  }
   const move = (i: number, d: number) =>
     setRules((rs) => {
       const j = i + d
@@ -204,7 +214,7 @@ export default function App() {
   const clearAll = () => {
     if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}? Export or share first if you want to keep them.`)) {
       setRules([])
-      setTemplateNotice('')
+      setTemplateNotice(null)
       setMembership({})
       setSectionTitles({ unsectioned: 'Unsectioned' })
     }
@@ -304,7 +314,6 @@ export default function App() {
         </button>
       </header>
 
-      <aside className="preview-notice"><strong>Experimental rule sections</strong><p>Flat list is the default. Named sections are temporary: labels and membership reset on reload and are not saved in CSV / JSON or share links. Dragging or using Move changes actual evaluation order. Within a section, drag above or below another rule or use its up/down buttons; section boundaries stay intact. Separate NSX policy output affects deployment and requires review.</p></aside>
       <main>
         <section className="panel rules">
           <details open className="policy-workspace">
@@ -323,7 +332,7 @@ export default function App() {
           </datalist>
 
           <RuleTemplates rules={rules} target={target} onAdd={addTemplate} />
-          {templateNotice && <p className="notice" role="status">{templateNotice}</p>}
+          {templateNotice && <p className="notice" role="status">{templateNotice.message}</p>}
 
           <div className="workspace-tabs" role="tablist" aria-label="Policy workspace view" onKeyDown={(event) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return
@@ -453,7 +462,7 @@ export default function App() {
                 <button className="primary" onClick={copy} disabled={!code.trim() || output.blocked || (routeros && errors.length > 0)}><ButtonIcon name="copy" />{copied ? 'Copied ✓' : 'Copy'}</button>
               </div>
             </div>
-            {routeros && <div className="notice">RouterOS 7.x · IPv4 filter · {target === 'mikrotik-tf' ? 'Terraform-managed rules and ordering. Apply can update/delete managed rules; changes are not atomic. Review placement relative to existing rules and management access. Configure HTTPS and credentials outside the browser.' : 'append-only .rsc. Review existing rules and management access before importing; reimport duplicates rules.'} Chain: input = to router, output = from router, forward = through router. Auto uses Direction. Policy name is descriptive only.{errors.length > 0 && ' Generation blocked: fix enabled-rule errors first.'}</div>}
+            {routeros && <div className="notice">RouterOS 7.x · IPv4 filter · {target === 'mikrotik-tf' ? 'Terraform-managed rules and ordering. Apply can update/delete managed rules; changes are not atomic. Review placement relative to existing rules and management access. Configure HTTPS and credentials outside the browser.' : 'append-only .rsc. Review existing rules and management access before importing; reimport duplicates rules.'} Chain: input = to router, output = from router, forward = through router. Auto uses Direction. Policy name is descriptive only.{errors.length > 0 && ' Generation blocked: fix rule errors, including disabled rules, first.'}</div>}
             {shared && <div className="notice">{shared}</div>}
             {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
             {output.warnings.length > 0 && <div className="notice">{output.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}

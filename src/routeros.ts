@@ -25,12 +25,11 @@ const allAddresses = (value: string): boolean => {
 const catchAll = (rule: Rule): boolean => allAddresses(rule.source) && allAddresses(rule.destination) && rule.protocol === 'ANY' && !rule.ports.trim()
 
 export const routerosIssues = (rules: Rule[], format: 'rsc' | 'terraform' = 'rsc'): RouterosIssue[] => {
-  const enabled = rules.filter((rule) => rule.enabled)
   const issues: RouterosIssue[] = []
   const names = new Set<string>()
   const error = (message: string) => issues.push({ level: 'error', message })
   const warn = (message: string) => issues.push({ level: 'warn', message })
-  enabled.forEach((rule, index) => {
+  rules.forEach((rule, index) => {
     const label = rule.name || `Rule ${index + 1}`
     if (!rule.name.trim()) error(`Rule ${index + 1} has no name`)
     if (names.has(rule.name)) error(`Duplicate rule name "${rule.name}"`)
@@ -62,13 +61,13 @@ export const routerosIssues = (rules: Rule[], format: 'rsc' | 'terraform' = 'rsc
     if (unsupported.length) error(`${label}: RouterOS cannot represent ${unsupported.join(', ')}; clear these inherited fields before generating (use another target's editor or JSON)`)
     if (!rule.permanent) error(`${label}: RouterOS filter rules persist; runtime-only rules are unsupported — enable Permanent using the firewalld editor or JSON`)
     if (rule.priority.trim()) warn(`${label}: Priority is not applied; RouterOS priority matches packet priority, not rule order. The table order is used.`)
-    if (catchAll(rule) && rule.action === 'ALLOW') warn(`${label}: allow any → any, all protocols/ports in ${routerosChain(rule)}`)
-    if (catchAll(rule) && enabled.slice(index + 1).some((later) => routerosChain(later) === routerosChain(rule)))
+    if (rule.enabled && catchAll(rule) && rule.action === 'ALLOW') warn(`${label}: allow any → any, all protocols/ports in ${routerosChain(rule)}`)
+    if (rule.enabled && catchAll(rule) && rules.slice(index + 1).some((later) => later.enabled && routerosChain(later) === routerosChain(rule)))
       warn(`"${label}" is a catch-all ${rule.action.toLowerCase()} in ${routerosChain(rule)} — later rules in that chain never match`)
   })
   warn('RouterOS 7.x IPv4 filters only. Auto maps Inbound → input (to router), Outbound → output (from router); use forward for traffic through the router. Explicit Chain overrides Direction.')
   warn(format === 'terraform'
-    ? 'Terraform owns generated rules in state: apply/destroy can update/delete them, including rules removed or disabled in the table. Native ordering moves only generated rule IDs; placement relative to unmanaged rules is not guaranteed. Changes are not atomic. Preserve state, review the plan and management access. Policy / ACL name is descriptive only.'
+    ? 'Terraform owns generated rules in state: apply/destroy can update/delete them, including rules removed from the table. Disabled rules remain managed with disabled=true. Native ordering moves only generated rule IDs; placement relative to unmanaged rules is not guaranteed. Changes are not atomic. Preserve state, review the plan and management access. Policy / ACL name is descriptive only.'
     : 'Append-only: no existing rules are removed or reordered. Reimport creates duplicates; earlier router rules may shadow the generated rules. Policy / ACL name is descriptive only.')
   warn('RouterOS accepts packets when no filter matches. No default deny, established/related accepts or return-traffic rules are added. Existing established/related accepts and FastTrack may bypass later denies; bridge and hardware-offloaded traffic may bypass IP filters. Review packet flow and management access before importing.')
   return issues
@@ -95,15 +94,15 @@ export const mikrotik = (rules: Rule[], { policyName }: { policyName: string }):
     ...issues.filter((issue) => issue.level === 'warn').map((issue) => `# WARNING: ${escapeText(issue.message)}`),
   ]
   const errors = issues.filter((issue) => issue.level === 'error')
-  if (errors.length) return [...header, '# BLOCKED: fix all enabled-rule errors; no commands generated.', ...errors.map((issue) => `# ERROR: ${escapeText(issue.message)}`)].join('\n') + '\n'
-  const commands = rules.filter((rule) => rule.enabled).flatMap((rule) => addresses(rule.source).flatMap((source) => addresses(rule.destination).map((destination) => {
+  if (errors.length) return [...header, '# BLOCKED: fix all rule errors, including disabled rules; no commands generated.', ...errors.map((issue) => `# ERROR: ${escapeText(issue.message)}`)].join('\n') + '\n'
+  const commands = rules.flatMap((rule) => addresses(rule.source).flatMap((source) => addresses(rule.destination).map((destination) => {
     const parts = ['/ip firewall filter add', `chain=${routerosChain(rule)}`, `action=${{ ALLOW: 'accept', DROP: 'drop', REJECT: 'reject' }[rule.action]}`]
     if (rule.action === 'REJECT') parts.push('reject-with=icmp-admin-prohibited')
     if (source !== '*') parts.push(`src-address=${source}`)
     if (destination !== '*') parts.push(`dst-address=${destination}`)
     if (rule.protocol !== 'ANY') parts.push(`protocol=${rule.protocol.toLowerCase()}`)
     if (rule.ports.trim()) parts.push(`dst-port=${normalizedPorts(rule.ports)}`)
-    parts.push(`log=${rule.logging ? 'yes' : 'no'}`)
+    parts.push(`disabled=${rule.enabled ? 'no' : 'yes'}`, `log=${rule.logging ? 'yes' : 'no'}`)
     if (rule.logging) parts.push(`log-prefix=${quoted(rule.name)}`)
     parts.push(`comment=${quoted(rule.notes ? `${rule.name}: ${rule.notes}` : rule.name)}`)
     return parts.join(' ')
@@ -123,11 +122,11 @@ export const mikrotikTerraform = (rules: Rule[], { policyName }: { policyName: s
     ...issues.map((issue) => `# ${issue.level === 'error' ? 'ERROR' : 'WARNING'}: ${escapeText(issue.message)}`),
   ].join('\n') + '\n'
   if (issues.some((issue) => issue.level === 'error'))
-    return `${header}# BLOCKED: fix all enabled-rule errors; do not apply this file.\n# An impossible Terraform version constraint prevents an empty configuration from deleting managed rules.\nterraform {\n  required_version = "< 0.0.0"\n}\n`
+    return `${header}# BLOCKED: fix all rule errors, including disabled rules; do not apply this file.\n# An impossible Terraform version constraint prevents an empty configuration from deleting managed rules.\nterraform {\n  required_version = "< 0.0.0"\n}\n`
 
   const resources: string[] = []
   const sequence: string[] = []
-  for (const rule of rules.filter((rule) => rule.enabled)) {
+  for (const rule of rules) {
     addresses(rule.source).forEach((source, sourceIndex) => addresses(rule.destination).forEach((destination, destinationIndex) => {
       const name = `${terraformName(rule.name)}_${sourceIndex}_${destinationIndex}`
       const fields: Record<string, string> = {
@@ -139,7 +138,7 @@ export const mikrotikTerraform = (rules: Rule[], { policyName }: { policyName: s
       if (destination !== '*') fields.dst_address = hclString(destination)
       if (rule.protocol !== 'ANY') fields.protocol = hclString(rule.protocol.toLowerCase())
       if (rule.ports.trim()) fields.dst_port = hclString(normalizedPorts(rule.ports))
-      fields.disabled = 'false'
+      fields.disabled = String(!rule.enabled)
       fields.log = String(rule.logging)
       if (rule.logging) fields.log_prefix = hclString(rule.name)
       fields.comment = hclString(rule.notes ? `${rule.name}: ${rule.notes}` : rule.name)

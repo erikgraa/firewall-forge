@@ -47,15 +47,15 @@ describe('policy workspace', () => {
 })
 
 describe('flat-list ordering', () => {
-  it('retains whole-list arrow controls while documenting section-local ordering', () => {
+  it('retains whole-list arrow controls without the section-specific warning', () => {
     const rules = [{ ...blankRule(), name: 'first-flat-rule' }, { ...blankRule(), name: 'second-flat-rule' }]
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === 'fwgen.v2' ? JSON.stringify({ rules, target: 'windows', policyName: 'test' }) : null })
     const markup = renderToStaticMarkup(<App />)
     expect(markup.match(/title="Move up"/g)).toHaveLength(2)
     expect(markup.match(/title="Move down"/g)).toHaveLength(2)
     expect(markup).not.toContain('data-move-rule-id=')
-    expect(markup).toContain('Within a section, drag above or below another rule')
-    expect(markup).toContain('section boundaries stay intact')
+    expect(markup).not.toContain('Experimental rule sections')
+    expect(markup).not.toContain('class="preview-notice"')
   })
 })
 
@@ -131,7 +131,7 @@ describe.each(['mikrotik', 'mikrotik-tf'])('MikroTik editor (%s)', (target) => {
   it('loads old stored rules with Auto and blocks invalid rule downloads', () => {
     expect(render({ routerosChain: undefined })).toContain('<option selected="">Auto</option>')
     const markup = render({ source: 'Internet' })
-    expect(markup).toContain('Generation blocked: fix enabled-rule errors first.')
+    expect(markup).toContain('Generation blocked: fix rule errors, including disabled rules, first.')
     expect(markup).toContain(`disabled="">Download mikrotik-firewall.${target === 'mikrotik-tf' ? 'tf' : 'rsc'}</button>`)
     expect(markup).toContain('disabled="">Copy</button>')
     expect(markup).toContain('BLOCKED:')
@@ -218,6 +218,6 @@ describe('ordered sections preview integration', () => {
     expect(markup).toContain('aria-label="Evaluation position 2">2</span>')
     expect(markup).not.toContain('draggable="true"')
     expect(markup).not.toContain('Start new section at rule')
-    expect(markup).toContain('Dragging or using Move changes actual evaluation order.')
+    expect(markup).not.toContain('Experimental rule sections')
   })
 })
