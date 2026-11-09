@@ -314,7 +314,7 @@ export default function App() {
           <div className="panel-head">
             <div className="tabs" role="group" aria-label="Firewall platform">
               {platforms.map((p) => (
-                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
+                <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} data-platform={p.platform} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
                   <span>{p.platform === current.platform && <span className="selection-mark" aria-hidden="true">✓ </span>}{p.label}</span>
                   <small>{TARGETS.filter((t) => t.platform === p.platform).map((t) => t.format).join(' · ')}</small>
                 </button>

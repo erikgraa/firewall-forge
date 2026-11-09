@@ -160,9 +160,26 @@ input:disabled { opacity: .45; }
 .issues .warn { background: #f59e0b1a; border: 1px solid #f59e0b55; }
 
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.tab { display: flex; flex-direction: column; align-items: flex-start; padding: 7px 12px; line-height: 1.2; }
+.tab {
+  --platform-color: var(--muted);
+  display: flex; flex-direction: column; align-items: flex-start; padding: 7px 12px;
+  line-height: 1.2; border-left: 4px solid var(--platform-color);
+  background: color-mix(in srgb, var(--platform-color) 12%, var(--panel-2));
+}
+.tab[data-platform='nsx'] { --platform-color: #9b75e8; }
+.tab[data-platform='sdn'] { --platform-color: #398cc5; }
+.tab[data-platform='azl'] { --platform-color: #238a9b; }
+.tab[data-platform='azfw'] { --platform-color: #d47735; }
+.tab[data-platform='windows'] { --platform-color: #4774d5; }
+.tab[data-platform='nftables'] { --platform-color: #3a986c; }
+.tab[data-platform='iptables'] { --platform-color: #8d9a3e; }
+.tab[data-platform='firewalld'] { --platform-color: #cd645c; }
+.tab[data-platform='cisco'] { --platform-color: #3a9aa6; }
+.tab[data-platform='fmc'] { --platform-color: #c579a4; }
+.tab[data-platform='panos'] { --platform-color: #bc8651; }
 .tab small { color: var(--muted); font-size: 11px; }
-.tab.active { border-color: var(--muted); background: var(--hover-bg); box-shadow: inset 0 -3px var(--muted); }
+.tab:hover { border-left-color: var(--platform-color); background: color-mix(in srgb, var(--platform-color) 20%, var(--panel-2)); }
+.tab.active, .tab.active:hover { border-color: var(--platform-color); background: color-mix(in srgb, var(--platform-color) 22%, var(--panel-2)); box-shadow: inset 0 -2px var(--platform-color); }
 .tab:focus-visible, .format:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
 
 .toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
