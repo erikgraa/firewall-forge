@@ -34,9 +34,9 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 ## ✨ Features
 
 - 🌗 Light / dark mode toggle (follows your system by default, remembered per browser), with a matching icon for each
-- 📂 Collapsible generated output, expanded by default
+- 📂 Collapsible Policy workspace and Generated output, both expanded by default; collapsing preserves rules and the selected workspace tab
 - 🧩 Platforms with switchable output formats (e.g. NSX: Terraform / PowerShell, Azure Local: az CLI / Bicep, Linux: native / Ansible)
-- 📝 Rule table with inline editing, enable/disable, reorder, duplicate and delete
+- 📝 Linked **Rules / Topology** tabs: inline rule editing, enable/disable, reorder, duplicate and delete, plus a live SVG rule-intent map with a shared editor, search, chain filters and disabled-rule visibility
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
 - 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
@@ -44,6 +44,14 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 - 🗂️ Rules are saved in your browser's local storage
 - 🔗 Share link: the whole rule set is compressed into the URL hash (nothing is uploaded)
 - ⚠️ Per-target warnings, e.g. no reject on Windows/Cisco, Windows block-before-allow, default-accept chains
+
+## 🗺️ Rule-intent topology
+
+Switch between **Rules** and **Topology** in the collapsible Policy workspace. Both views edit the same saved rule set; table selection, imports, duplication, reordering and deletion are reflected in the diagram and generated output. Select a route or rule to edit its matchers, service, action and target-specific fields, or use **Open in Rules** to focus its table row. Search by name or address matcher, and optionally show disabled rules. Tabs support arrow keys/Home/End; routes support Enter/Space selection. Narrow screens stack the inspector and allow horizontal scrolling of the diagram.
+
+The SVG shows **configured rule intent**, not discovered devices, live traffic, an effective-policy simulation or guaranteed reachability. Nodes are address matchers, including grouped presets and lists—not individual devices or generated resource counts. Route numbers preserve table order but do not simulate target evaluation. DROP/REJECT destination links are dashed matcher associations without delivery arrows; disabled routes have no arrows. Invalid matchers, services, ports and duplicate names are excluded with editable diagnostics rather than replaced with Any. Shared target warnings and generation guards still apply.
+
+Only MikroTik native and Terraform output show `input` / `forward` / `output` lanes, using the same Auto/explicit-chain mapping as the generators. Other platforms use a generic policy context: scope, zones, priorities, inherited rules and platform defaults must be reviewed in the target-specific fields and warnings. No default deny, established/related or return-traffic rules are added. The Mermaid/zone-view and diagram-export roadmap remains a separate follow-up.
 
 ## 📡 MikroTik RouterOS
 
@@ -131,9 +139,10 @@ See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool re
 - [x] 🔗 Shareable links (rules encoded in the URL hash)
 - [ ] 🏷️ Named address groups that expand per target
 - [ ] 🔍 Diff view between two rule sets
-- [ ] 🧰 Multiple example configuration sets / templates for common scenarios, selectable instead of only the current sample rules
+- [ ] 🧰 Loadable configuration templates: create different example rule sets for common firewall scenarios, let users select and load a template into the rule table, and review before replacing their current rules; everything stays in the browser
 - [x] 🧪 Unit tests for the generators
 - [ ] 🧾 Verify generated syntax against real NSX, SDN, Azure Local, firewalld, Cisco and Palo Alto systems
+- [x] 🗺️ Live SVG rule-intent topology with linked Rules / Topology tabs, shared editing, filtering and a collapsible Policy workspace ([#36](https://github.com/erikgraa/firewall-forge/issues/36))
 - [ ] 🗺️ Mermaid diagrams generated from the rules: traffic flow, rule evaluation order (compact rectangles, not diamonds) and a zone view for Palo Alto / FMC; lazy-load Mermaid and offer Copy Mermaid / Download SVG
 - [ ] 🤖 Cisco FMC Ansible (`cisco.fmcansible`) once the module names are checked
 - [x] 🏢 NSX project-scoped (multitenancy) output for Terraform and PowerShell (optional project ID)

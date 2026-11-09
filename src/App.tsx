@@ -11,6 +11,7 @@ import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
 import type { Rule, TargetId } from './model'
 import './App.css'
+import Topology from './TopologyView'
 
 const STORAGE = 'fwgen.v2'
 const THEME_KEY = 'fwgen.theme'
@@ -54,6 +55,18 @@ export default function App() {
   const [nsxProject, setNsxProject] = useState(initial.nsxProject ?? '')
   const [nsxCategory, setNsxCategory] = useState(normalizeNsxCategory(initial.nsxCategory))
   const [theme, setTheme] = useState<Theme>(initialTheme)
+  const [workspaceView, setWorkspaceView] = useState<'rules' | 'topology'>('rules')
+  const [selectedRuleId, setSelectedRuleId] = useState(initial.rules[0]?.id ?? '')
+  const activeRuleId = rules.some((rule) => rule.id === selectedRuleId) ? selectedRuleId : rules[0]?.id ?? ''
+  const openTableRule = (id: string) => {
+    setSelectedRuleId(id)
+    setWorkspaceView('rules')
+    requestAnimationFrame(() => {
+      const row = Array.from(document.querySelectorAll<HTMLElement>('[data-table-rule-id]')).find((element) => element.dataset.tableRuleId === id)
+      row?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      row?.querySelector<HTMLInputElement>('input:not([type="checkbox"])')?.focus({ preventScroll: true })
+    })
+  }
   const [importOpen, setImportOpen] = useState(false)
   const [csv, setCsv] = useState('')
   const [dataFormat, setDataFormat] = useState<DataFormat>('csv')
@@ -180,11 +193,12 @@ export default function App() {
     </div>
   )
   const renderExtra = (r: Rule, key: ColKey) => {
+    const label = `${COLUMNS[key].label} for ${r.name}`
     switch (key) {
       case 'logging':
         return (
           <label className="switch" title={COLUMNS.logging.title}>
-            <input type="checkbox" checked={r.logging} onChange={(e) => patch(r.id, { logging: e.target.checked })} />
+            <input aria-label={label} type="checkbox" checked={r.logging} onChange={(e) => patch(r.id, { logging: e.target.checked })} />
             <i />
           </label>
         )
@@ -196,31 +210,31 @@ export default function App() {
         )
       case 'profile':
         return (
-          <select value={r.profile} onChange={(e) => patch(r.id, { profile: e.target.value as Rule['profile'] })}>
+          <select aria-label={label} value={r.profile} onChange={(e) => patch(r.id, { profile: e.target.value as Rule['profile'] })}>
             <option>Any</option><option>Domain</option><option>Private</option><option>Public</option>
           </select>
         )
       case 'permanent':
         return (
           <label className="switch" title={COLUMNS.permanent.title}>
-            <input type="checkbox" checked={r.permanent} onChange={(e) => patch(r.id, { permanent: e.target.checked })} />
+            <input aria-label={label} type="checkbox" checked={r.permanent} onChange={(e) => patch(r.id, { permanent: e.target.checked })} />
             <i />
           </label>
         )
       case 'priority':
-        return <input value={r.priority} placeholder="auto" onChange={(e) => patch(r.id, { priority: e.target.value })} />
+        return <input aria-label={label} value={r.priority} placeholder="auto" onChange={(e) => patch(r.id, { priority: e.target.value })} />
       case 'program':
-        return <input value={r.program} placeholder="C:\path\app.exe" onChange={(e) => patch(r.id, { program: e.target.value })} />
+        return <input aria-label={label} value={r.program} placeholder="C:\path\app.exe" onChange={(e) => patch(r.id, { program: e.target.value })} />
       case 'zone':
-        return <input value={r.zone} placeholder="public" onChange={(e) => patch(r.id, { zone: e.target.value })} />
+        return <input aria-label={label} value={r.zone} placeholder="public" onChange={(e) => patch(r.id, { zone: e.target.value })} />
       case 'scope':
-        return <input value={r.scope} placeholder="/infra/domains/default/groups/…" onChange={(e) => patch(r.id, { scope: e.target.value })} />
+        return <input aria-label={label} value={r.scope} placeholder="/infra/domains/default/groups/…" onChange={(e) => patch(r.id, { scope: e.target.value })} />
       case 'srcZone':
-        return <input value={r.srcZone} placeholder="any" onChange={(e) => patch(r.id, { srcZone: e.target.value })} />
+        return <input aria-label={label} value={r.srcZone} placeholder="any" onChange={(e) => patch(r.id, { srcZone: e.target.value })} />
       case 'dstZone':
-        return <input value={r.dstZone} placeholder="any" onChange={(e) => patch(r.id, { dstZone: e.target.value })} />
+        return <input aria-label={label} value={r.dstZone} placeholder="any" onChange={(e) => patch(r.id, { dstZone: e.target.value })} />
       case 'notes':
-        return <input value={r.notes} placeholder="notes" onChange={(e) => patch(r.id, { notes: e.target.value })} />
+        return <input aria-label={label} value={r.notes} placeholder="notes" onChange={(e) => patch(r.id, { notes: e.target.value })} />
     }
   }
 
@@ -241,8 +255,9 @@ export default function App() {
 
       <main>
         <section className="panel rules">
+          <details open className="policy-workspace">
+          <summary className="workspace-summary">Policy workspace <span className="count">{rules.length}</span></summary>
           <div className="panel-head">
-            <h2>Rules <span className="count">{rules.length}</span></h2>
             <div className="actions">
               <button className="ghost" onClick={() => setImportOpen(true)}>Import</button>
               <button className="ghost" onClick={exportData} disabled={rules.length === 0}>Export</button>
@@ -258,7 +273,19 @@ export default function App() {
             {Object.keys(ENDPOINTS).map((e) => <option key={e} value={e} />)}
           </datalist>
 
-          <div className="table">
+          <div className="workspace-tabs" role="tablist" aria-label="Policy workspace view" onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return
+            event.preventDefault()
+            const next = event.key === 'Home' ? 'rules' : event.key === 'End' ? 'topology' : workspaceView === 'rules' ? 'topology' : 'rules'
+            setWorkspaceView(next)
+            requestAnimationFrame(() => document.getElementById(`${next}-view-tab`)?.focus())
+          }}>
+            {(['rules', 'topology'] as const).map((view) => <button key={view} id={`${view}-view-tab`} role="tab" aria-controls={`${view}-view`} aria-selected={workspaceView === view} tabIndex={workspaceView === view ? 0 : -1} onClick={() => setWorkspaceView(view)}>{view === 'rules' ? 'Rules' : 'Topology'}</button>)}
+          </div>
+          <div id="topology-view" role="tabpanel" aria-labelledby="topology-view-tab" hidden={workspaceView !== 'topology'}>
+            {workspaceView === 'topology' && <Topology rules={rules} target={target} platformLabel={platforms.find((platform) => platform.platform === current.platform)?.label ?? current.label} selectedId={activeRuleId} onSelect={setSelectedRuleId} onPatch={patch} onOpenTable={openTableRule} extraFields={(rule) => <div className="topology-extra">{extras.map((key) => <div key={key} className="topology-field" role="group" aria-label={COLUMNS[key].label}><span>{COLUMNS[key].label}</span>{renderExtra(rule, key)}</div>)}</div>} />}
+          </div>
+          <div className="table" id="rules-view" role="tabpanel" aria-labelledby="rules-view-tab" hidden={workspaceView !== 'rules'}>
             <div className="row head" style={rowStyle}>
               <span /><span>Name</span><span>Source</span><span>Destination</span><span>Service</span>
               <span>Ports</span><span>Action</span><span>Dir</span>
@@ -266,7 +293,7 @@ export default function App() {
               <span />
             </div>
             {rules.map((r, i) => (
-              <div key={r.id} className={`row ${r.enabled ? '' : 'off'}`} style={rowStyle}>
+              <div key={r.id} data-table-rule-id={r.id} className={`row ${r.enabled ? '' : 'off'} ${activeRuleId === r.id ? 'topology-selected' : ''}`} style={rowStyle} onFocusCapture={() => setSelectedRuleId(r.id)} onClick={() => setSelectedRuleId(r.id)}>
                 <label className="switch" title="Enable / disable">
                   <input type="checkbox" checked={r.enabled} onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
                   <i />
@@ -315,6 +342,7 @@ export default function App() {
               ))}
             </ul>
           )}
+          </details>
         </section>
 
         <section className="panel output">

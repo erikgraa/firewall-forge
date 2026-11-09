@@ -6,6 +6,29 @@ import { blankRule } from './model'
 
 afterEach(() => vi.unstubAllGlobals())
 
+describe('policy workspace', () => {
+  it('starts expanded with accessible tabs and preserves the normal app defaults', () => {
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('<details open="" class="policy-workspace"><summary class="workspace-summary">Policy workspace')
+    expect(markup).toContain('id="rules-view-tab" role="tab" aria-controls="rules-view" aria-selected="true" tabindex="0"')
+    expect(markup).toContain('id="topology-view" role="tabpanel" aria-labelledby="topology-view-tab" hidden=""')
+    expect(markup).toContain('data-platform="nsx" aria-pressed="true"')
+    expect(markup).not.toContain('Full-app concept preview')
+    expect(markup).not.toContain('ssh-admin')
+  })
+
+  it('loads existing saved rules without replacing them with preview examples', () => {
+    const saved = { ...blankRule(), name: 'saved-policy', source: '10.90.0.0/24' }
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === 'fwgen.v2' ? JSON.stringify({ rules: [saved], target: 'mikrotik', policyName: 'existing' }) : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain(`data-table-rule-id="${saved.id}"`)
+    expect(markup).toContain('value="saved-policy"')
+    expect(markup).toContain('value="10.90.0.0/24"')
+    expect(markup).not.toContain('value="web-in"')
+  })
+})
+
 describe('generated output', () => {
   it('starts expanded and contains the platform selectors and generated code', () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })
