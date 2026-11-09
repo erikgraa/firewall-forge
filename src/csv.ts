@@ -7,10 +7,10 @@ const profiles = ['Any', 'Domain', 'Private', 'Public'] as const
 
 export const BASE_FIELDS = ['name', 'source', 'destination', 'service', 'ports', 'action', 'direction'] as const
 const EXTRA_FIELDS: ColKey[] = ['logging', 'priority', 'profile', 'program', 'zone', 'scope', 'notes', 'srcZone', 'dstZone', 'permanent', 'routerosChain']
-const FIELD_LOOKUP = new Map<string, string>([...BASE_FIELDS, ...EXTRA_FIELDS].map((f) => [f.toLowerCase(), f]))
+const FIELD_LOOKUP = new Map<string, string>([...BASE_FIELDS, ...EXTRA_FIELDS, 'enabled'].map((f) => [f.toLowerCase(), f]))
 
-// The columns of the selected target: shared fields first, then that target's own options.
-export const csvColumns = (extras: ColKey[]): string[] => [...BASE_FIELDS, ...extras]
+// Enabled stays last so older headerless target-specific rows keep their column positions.
+export const csvColumns = (extras: ColKey[]): string[] => [...BASE_FIELDS, ...extras, 'enabled']
 
 const splitLine = (line: string): string[] =>
   line.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((c) => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'))
@@ -43,6 +43,7 @@ export const parseCsv = (text: string, extras: ColKey[] = []): Rule[] => {
     let rule: Rule = {
       ...blankRule(),
       name: get('name') ?? '',
+      enabled: truthy(get('enabled'), true),
       source: routeros ? get('source') ?? 'Any' : get('source') || 'Any',
       destination: routeros ? get('destination') ?? 'Any' : get('destination') || 'Any',
       action: (routeros || ['ALLOW', 'DROP', 'REJECT'].includes(act) ? act : 'ALLOW') as Action,

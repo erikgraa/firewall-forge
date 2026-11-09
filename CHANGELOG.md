@@ -8,6 +8,11 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Added
 
+- One-click SSH, Web and DNS starter templates with decorative icons: one SSH rule, one HTTPS rule or two DNS rules, disabled until the user edits/reviews addresses and enables them. New workspaces start empty while existing saved rules remain intact.
+- Experimental Flat / Sections organization with Unsectioned, named collapsible sections, section-local additions, drag/drop and accessible Move and up/down controls. Moves change actual rule order; section metadata remains temporary and is excluded from saved/exported/shared data.
+- Optional one-policy-per-section NSX output for Terraform, REST PowerShell and SDK PowerShell, plus group comments and compact commands in Windows PowerShell output. Deployment order and resource-identity changes require review; no default-deny controls or generation are included.
+- Distinct action/output-format colors, equal-sized boxed product controls and decorative button icons, with clear selected and keyboard-focus states in both themes.
+- A trailing `enabled` CSV column and matching import support to preserve disabled rules; older files without the column retain existing defaults and positional fields.
 - This changelog and guidance for future release notes.
 - Live SVG rule-intent topology with linked Rules / Topology tabs, shared editing and selection, search, disabled-rule visibility, MikroTik chain filters, and target-aware validation. The diagram shows configured matchers and decisions, not discovered devices or guaranteed reachability ([#36](https://github.com/erikgraa/firewall-forge/issues/36)).
 - Collapsible Policy workspace, expanded by default and preserving rule data and the selected Rules / Topology tab when collapsed.

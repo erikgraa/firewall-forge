@@ -6,12 +6,18 @@ import { jsonExample, parseJson, toJson } from './json'
 import type { DataFormat } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
-import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, ROUTEROS_CHAINS, SERVICES, applyService, blankRule, newId, normalizeNsxCategory, sampleRules } from './model'
+import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, ROUTEROS_CHAINS, SERVICES, applyService, blankRule, newId, normalizeNsxCategory } from './model'
 import { COLUMNS, EXTRA_COLUMNS } from './columns'
 import type { ColKey } from './columns'
 import type { Rule, TargetId } from './model'
 import './App.css'
 import Topology from './TopologyView'
+import GroupedRules from './GroupedRules'
+import RuleTemplates from './RuleTemplates'
+import ButtonIcon from './ButtonIcon'
+import { appendToUnsectioned, moveRuleToSection, reorderRuleWithinSection } from './sectionMoves'
+import { generateGroupedOutput } from './groupedOutput'
+import { sectionRuns } from './grouping'
 
 const STORAGE = 'fwgen.v2'
 const THEME_KEY = 'fwgen.theme'
@@ -32,7 +38,7 @@ interface Saved {
   nsxCategory?: string
 }
 
-const BASE_COLS = '44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
+const BASE_COLS = '44px 44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
 
 const load = (): Saved => {
   try {
@@ -44,7 +50,7 @@ const load = (): Saved => {
   } catch {
     /* ignore corrupt state */
   }
-  return { rules: sampleRules(), target: 'nsx', policyName: 'generated' }
+  return { rules: [], target: 'nsx', policyName: 'generated' }
 }
 
 export default function App() {
@@ -63,6 +69,8 @@ export default function App() {
     setWorkspaceView('rules')
     requestAnimationFrame(() => {
       const row = Array.from(document.querySelectorAll<HTMLElement>('[data-table-rule-id]')).find((element) => element.dataset.tableRuleId === id)
+      const section = row?.closest('details')
+      if (section) section.open = true
       row?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
       row?.querySelector<HTMLInputElement>('input:not([type="checkbox"])')?.focus({ preventScroll: true })
     })
@@ -73,6 +81,43 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState<string | null>(null)
+  const [templateNotice, setTemplateNotice] = useState('')
+  const [membership, setMembership] = useState<Record<string, string>>({})
+  const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({ unsectioned: 'Unsectioned' })
+  const [nsxSeparatePolicies, setNsxSeparatePolicies] = useState(false)
+  const addTemplate = (added: Rule[], title: string) => {
+    if (!added.length) return
+    setRules((current) => appendToUnsectioned(current, added, membership))
+    setSelectedRuleId(added[0].id)
+    setWorkspaceView('rules')
+    setTemplateNotice(`${title}: added ${added.length} disabled rule${added.length === 1 ? '' : 's'} to the end of Unsectioned, which may precede named sections. Addresses start as Any. Set source and destination, review direction, chain and scope, then enable when ready.`)
+  }
+  const addRule = (groupId = 'unsectioned') => {
+    if (!Object.hasOwn(sectionTitles, groupId)) return
+    const rule = { ...blankRule(), name: `rule-${rules.length + 1}` }
+    if (groupId === 'unsectioned') {
+      setRules((current) => appendToUnsectioned(current, [rule], membership))
+    } else {
+      const result = moveRuleToSection([...rules, rule], membership, rule.id, groupId)
+      setRules(result.rules)
+      setMembership(result.membership)
+    }
+    setSelectedRuleId(rule.id)
+  }
+  const moveToSection = (ruleId: string, groupId: string) => {
+    if (!Object.hasOwn(sectionTitles, groupId)) return
+    const result = moveRuleToSection(rules, membership, ruleId, groupId)
+    if (result.fromIndex < 0) return
+    setRules(result.rules)
+    setMembership(result.membership)
+    setSelectedRuleId(ruleId)
+  }
+  const reorderWithinSection = (ruleId: string, anchorId: string, placement: 'before' | 'after') => {
+    const result = reorderRuleWithinSection(rules, membership, ruleId, anchorId, placement)
+    if (result.fromIndex < 0 || result.fromIndex === result.toIndex) return
+    setRules(result.rules)
+    setSelectedRuleId(ruleId)
+  }
 
   useEffect(() => {
     if (hashHandled || !location.hash.startsWith('#s=')) return
@@ -114,10 +159,11 @@ export default function App() {
   const gridCols = `${BASE_COLS} ${extras.map((k) => COLUMNS[k].width).join(' ')} 118px`.replace(/\s+/g, ' ')
   const example = dataFormat === 'csv' ? csvExample(extras) : jsonExample({ target, policyName })
   const ext = dataFormat
-  const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${960 + extras.length * 110}px` }
-  const issues = useMemo(() => validate(rules, target), [rules, target])
+  const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${1004 + extras.length * 110}px` }
+  const issues = useMemo(() => rules.length ? validate(rules, target) : [], [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
-  const code = useMemo(() => current.generate(rules, { policyName, nsxProject, nsxCategory }), [current, rules, policyName, nsxProject, nsxCategory])
+  const output = useMemo(() => generateGroupedOutput(rules, target, { policyName, nsxProject, nsxCategory }, sectionRuns(rules, membership), sectionTitles, nsxSeparatePolicies), [rules, target, policyName, nsxProject, nsxCategory, membership, sectionTitles, nsxSeparatePolicies])
+  const code = output.code
   const html = useMemo(() => highlight(code), [code])
 
   const patch = (id: string, change: Partial<Rule>) =>
@@ -130,15 +176,14 @@ export default function App() {
       ;[next[i], next[j]] = [next[j], next[i]]
       return next
     })
-  const duplicate = (r: Rule) =>
-    setRules((rs) => {
-      const i = rs.findIndex((x) => x.id === r.id)
-      const next = [...rs]
-      next.splice(i + 1, 0, { ...r, id: newId(), name: `${r.name}-copy` })
-      return next
-    })
+  const duplicate = (r: Rule) => {
+    const copy = { ...r, id: newId(), name: `${r.name}-copy` }
+    setRules((current) => appendToUnsectioned(current, [copy], membership))
+    setSelectedRuleId(copy.id)
+  }
 
   const copy = async () => {
+    if (output.blocked || !code.trim() || (routeros && errors.length > 0)) return
     await navigator.clipboard.writeText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1400)
@@ -150,13 +195,19 @@ export default function App() {
     setTimeout(() => setShared(null), 3500)
   }
   const download = () => {
+    if (output.blocked || !code.trim() || (routeros && errors.length > 0)) return
     const url = URL.createObjectURL(new Blob([code], { type: 'text/plain' }))
     const a = Object.assign(document.createElement('a'), { href: url, download: current.filename })
     a.click()
     URL.revokeObjectURL(url)
   }
   const clearAll = () => {
-    if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}? Export or share first if you want to keep them.`)) setRules([])
+    if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}? Export or share first if you want to keep them.`)) {
+      setRules([])
+      setTemplateNotice('')
+      setMembership({})
+      setSectionTitles({ unsectioned: 'Unsectioned' })
+    }
   }
   const saveFile = (text: string, filename: string, type = 'text/plain') => {
     const url = URL.createObjectURL(new Blob([text], { type }))
@@ -171,7 +222,7 @@ export default function App() {
   const doImport = () => {
     const result = dataFormat === 'csv' ? { rules: parseCsv(csv, extras), error: undefined as string | undefined } : parseJson(csv, target)
     if (!result.rules.length) return setImportError(result.error ?? 'No rules found.')
-    setRules((rs) => [...rs, ...result.rules])
+    setRules((rs) => appendToUnsectioned(rs, result.rules, membership))
     setCsv('')
     setImportError(null)
     setImportOpen(false)
@@ -253,25 +304,26 @@ export default function App() {
         </button>
       </header>
 
+      <aside className="preview-notice"><strong>Experimental rule sections</strong><p>Flat list is the default. Named sections are temporary: labels and membership reset on reload and are not saved in CSV / JSON or share links. Dragging or using Move changes actual evaluation order. Within a section, drag above or below another rule or use its up/down buttons; section boundaries stay intact. Separate NSX policy output affects deployment and requires review.</p></aside>
       <main>
         <section className="panel rules">
           <details open className="policy-workspace">
           <summary className="workspace-summary">Policy workspace <span className="count">{rules.length}</span></summary>
           <div className="panel-head">
             <div className="actions">
-              <button className="ghost" onClick={() => setImportOpen(true)}>Import</button>
-              <button className="ghost" onClick={exportData} disabled={rules.length === 0}>Export</button>
+              <button className="ghost action-button import-action" onClick={() => setImportOpen(true)}><ButtonIcon name="import" />Import</button>
+              <button className="ghost action-button export-action" onClick={exportData} disabled={rules.length === 0}><ButtonIcon name="export" />Export</button>
               {formatSwitch}
-              <button className="ghost" onClick={clearAll} disabled={rules.length === 0}>Clear all</button>
-              <button className="primary" onClick={() => setRules((rs) => [...rs, { ...blankRule(), name: `rule-${rs.length + 1}` }])}>
-                + Add rule
-              </button>
+              <button className="ghost action-button clear-action" onClick={clearAll} disabled={rules.length === 0}><ButtonIcon name="clear" />Clear all</button>
             </div>
           </div>
 
           <datalist id="endpoints">
             {Object.keys(ENDPOINTS).map((e) => <option key={e} value={e} />)}
           </datalist>
+
+          <RuleTemplates rules={rules} target={target} onAdd={addTemplate} />
+          {templateNotice && <p className="notice" role="status">{templateNotice}</p>}
 
           <div className="workspace-tabs" role="tablist" aria-label="Policy workspace view" onKeyDown={(event) => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return
@@ -280,25 +332,29 @@ export default function App() {
             setWorkspaceView(next)
             requestAnimationFrame(() => document.getElementById(`${next}-view-tab`)?.focus())
           }}>
-            {(['rules', 'topology'] as const).map((view) => <button key={view} id={`${view}-view-tab`} role="tab" aria-controls={`${view}-view`} aria-selected={workspaceView === view} tabIndex={workspaceView === view ? 0 : -1} onClick={() => setWorkspaceView(view)}>{view === 'rules' ? 'Rules' : 'Topology'}</button>)}
+            <span className="workspace-tabs-label" aria-hidden="true">View</span>
+            {(['rules', 'topology'] as const).map((view) => <button key={view} id={`${view}-view-tab`} role="tab" aria-controls={`${view}-view`} aria-selected={workspaceView === view} tabIndex={workspaceView === view ? 0 : -1} onClick={() => setWorkspaceView(view)}><span className="view-icon" aria-hidden="true">{view === 'rules' ? '▤' : '◎'}</span>{view === 'rules' ? 'Rules' : 'Topology'}</button>)}
           </div>
           <div id="topology-view" role="tabpanel" aria-labelledby="topology-view-tab" hidden={workspaceView !== 'topology'}>
             {workspaceView === 'topology' && <Topology rules={rules} target={target} platformLabel={platforms.find((platform) => platform.platform === current.platform)?.label ?? current.label} selectedId={activeRuleId} onSelect={setSelectedRuleId} onPatch={patch} onOpenTable={openTableRule} extraFields={(rule) => <div className="topology-extra">{extras.map((key) => <div key={key} className="topology-field" role="group" aria-label={COLUMNS[key].label}><span>{COLUMNS[key].label}</span>{renderExtra(rule, key)}</div>)}</div>} />}
+            {workspaceView === 'topology' && <div className="rule-add-footer"><button className="primary" onClick={() => addRule()}><ButtonIcon name="add" />Add rule</button></div>}
           </div>
-          <div className="table" id="rules-view" role="tabpanel" aria-labelledby="rules-view-tab" hidden={workspaceView !== 'rules'}>
+          <div id="rules-view" role="tabpanel" aria-labelledby="rules-view-tab" hidden={workspaceView !== 'rules'}>
+            <GroupedRules rules={rules} membership={membership} titles={sectionTitles} setTitles={setSectionTitles} onMove={moveToSection} onAdd={addRule} onReorder={reorderWithinSection}>{(entries, controls) => <div className="table">
             <div className="row head" style={rowStyle}>
-              <span /><span>Name</span><span>Source</span><span>Destination</span><span>Service</span>
+              <span>#</span><span /><span>Name</span><span>Source</span><span>Destination</span><span>Service</span>
               <span>Ports</span><span>Action</span><span>Dir</span>
               {extras.map((k) => <span key={k} title={COLUMNS[k].title}>{COLUMNS[k].label}</span>)}
               <span />
             </div>
-            {rules.map((r, i) => (
+            {entries.map(({ rule: r, index: i }) => (
               <div key={r.id} data-table-rule-id={r.id} className={`row ${r.enabled ? '' : 'off'} ${activeRuleId === r.id ? 'topology-selected' : ''}`} style={rowStyle} onFocusCapture={() => setSelectedRuleId(r.id)} onClick={() => setSelectedRuleId(r.id)}>
+                <span className="rule-order" aria-label={`Evaluation position ${i + 1}`}>{i + 1}</span>
                 <label className="switch" title="Enable / disable">
                   <input type="checkbox" checked={r.enabled} onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
                   <i />
                 </label>
-                <input value={r.name} placeholder="name" onChange={(e) => patch(r.id, { name: e.target.value })} />
+                {controls ? <div className="rule-name-cell"><input value={r.name} placeholder="name" onChange={(e) => patch(r.id, { name: e.target.value })} />{controls({ rule: r, index: i })}</div> : <input value={r.name} placeholder="name" onChange={(e) => patch(r.id, { name: e.target.value })} />}
                 <input list="endpoints" value={r.source} placeholder="CIDR / group" onChange={(e) => patch(r.id, { source: e.target.value })} />
                 <input list="endpoints" value={r.destination} placeholder="CIDR / group" onChange={(e) => patch(r.id, { destination: e.target.value })} />
                 <select value={r.service} onChange={(e) => setRules((rs) => rs.map((x) => (x.id === r.id ? applyService(x, e.target.value) : x)))}>
@@ -313,26 +369,24 @@ export default function App() {
                   )}
                   <input value={r.ports} disabled={r.service !== CUSTOM} placeholder="any" onChange={(e) => patch(r.id, { ports: e.target.value })} />
                 </div>
-                <select className={`pill ${r.action.toLowerCase()}`} value={r.action} onChange={(e) => patch(r.id, { action: e.target.value as Rule['action'] })}>
-                  <option>ALLOW</option><option>DROP</option><option>REJECT</option>
+                <select aria-label={`Action for ${r.name}`} className={`pill ${r.action.toLowerCase()}`} value={r.action} onChange={(e) => patch(r.id, { action: e.target.value as Rule['action'] })}>
+                  <option value="ALLOW">ALLOW</option><option value="DROP">DROP</option><option value="REJECT">REJECT</option>
                 </select>
                 <select aria-label={`Direction for ${r.name}`} disabled={routeros && r.routerosChain !== 'Auto'} title={routeros ? 'Auto chain uses Direction; an explicit Chain overrides it.' : undefined} value={r.direction} onChange={(e) => patch(r.id, { direction: e.target.value as Rule['direction'] })}>
                   <option>Inbound</option><option>Outbound</option>
                 </select>
                 {extras.map((k) => <div key={k} className="cell">{renderExtra(r, k)}</div>)}
                 <div className="row-actions">
-                  <button title="Move up" onClick={() => move(i, -1)}>↑</button>
-                  <button title="Move down" onClick={() => move(i, 1)}>↓</button>
-                  <button title="Duplicate" onClick={() => duplicate(r)}>⧉</button>
+                  {!controls && <>
+                    <button title="Move up" onClick={() => move(i, -1)}>↑</button>
+                    <button title="Move down" onClick={() => move(i, 1)}>↓</button>
+                  </>}
+                  <button title="Duplicate into Unsectioned" onClick={() => duplicate(r)}>⧉</button>
                   <button title="Delete" className="danger" onClick={() => setRules((rs) => rs.filter((x) => x.id !== r.id))}>✕</button>
                 </div>
               </div>
             ))}
-            {rules.length === 0 && (
-              <div className="empty">
-                No rules yet — add one, import a CSV / JSON file, or <button className="ghost" onClick={() => setRules(sampleRules())}>load the example rules</button>.
-              </div>
-            )}
+            </div>}</GroupedRules>
           </div>
 
           {issues.length > 0 && (
@@ -348,7 +402,9 @@ export default function App() {
         <section className="panel output">
             <details open>
             <summary className="output-summary">Generated output</summary>
-            <div className="panel-head">
+            <fieldset className="product-picker">
+              <legend>Firewall product</legend>
+              <p>Choose a product, then select its output format below.</p>
               <div className="tabs" role="group" aria-label="Firewall platform">
                 {platforms.map((p) => (
                   <button key={p.platform} className={p.platform === current.platform ? 'tab active' : 'tab'} data-platform={p.platform} aria-pressed={p.platform === current.platform} onClick={() => pickPlatform(p.platform)}>
@@ -357,15 +413,21 @@ export default function App() {
                   </button>
                 ))}
               </div>
-            </div>
+            </fieldset>
             <div className="formats" role="group" aria-label="Output format">
               <span className="formats-label">Output format</span>
               {formats.map((t) => (
-                <button key={t.id} className={t.id === target ? 'format active' : 'format'} aria-pressed={t.id === target} onClick={() => setTarget(t.id)}>
+                <button key={t.id} className={t.id === target ? 'format active' : 'format'} aria-pressed={t.id === target} data-format={t.format} onClick={() => setTarget(t.id)}>
                   {t.id === target && <span className="selection-mark" aria-hidden="true">✓ </span>}{t.format}
                 </button>
               ))}
             </div>
+            {current.platform === 'nsx' && <label className="notice nsx-layout">NSX policy layout
+              <select aria-label="NSX policy layout" value={nsxSeparatePolicies ? 'separate' : 'single'} onChange={(event) => setNsxSeparatePolicies(event.target.value === 'separate')}>
+                <option value="single">One security policy (default)</option>
+                <option value="separate">One security policy per section — preview</option>
+              </select>
+            </label>}
             <div className="toolbar">
               <label>
                 Policy / ACL name
@@ -386,15 +448,16 @@ export default function App() {
                 </>
               )}
               <div className="actions">
-                <button className="ghost" onClick={share}>Share link</button>
-                <button className="ghost" onClick={download} disabled={routeros && errors.length > 0}>Download {current.filename}</button>
-                <button className="primary" onClick={copy} disabled={routeros && errors.length > 0}>{copied ? 'Copied ✓' : 'Copy'}</button>
+                <button className="ghost" onClick={share}><ButtonIcon name="share" />Share link</button>
+                <button className="ghost" onClick={download} disabled={!code.trim() || output.blocked || (routeros && errors.length > 0)}><ButtonIcon name="download" />Download {current.filename}</button>
+                <button className="primary" onClick={copy} disabled={!code.trim() || output.blocked || (routeros && errors.length > 0)}><ButtonIcon name="copy" />{copied ? 'Copied ✓' : 'Copy'}</button>
               </div>
             </div>
             {routeros && <div className="notice">RouterOS 7.x · IPv4 filter · {target === 'mikrotik-tf' ? 'Terraform-managed rules and ordering. Apply can update/delete managed rules; changes are not atomic. Review placement relative to existing rules and management access. Configure HTTPS and credentials outside the browser.' : 'append-only .rsc. Review existing rules and management access before importing; reimport duplicates rules.'} Chain: input = to router, output = from router, forward = through router. Auto uses Direction. Policy name is descriptive only.{errors.length > 0 && ' Generation blocked: fix enabled-rule errors first.'}</div>}
             {shared && <div className="notice">{shared}</div>}
             {errors.length > 0 && <div className="banner">Fix {errors.length} error{errors.length > 1 ? 's' : ''} before using this output.</div>}
-            <pre className="code" dangerouslySetInnerHTML={{ __html: html }} />
+            {output.warnings.length > 0 && <div className="notice">{output.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+            <pre className="code" dangerouslySetInnerHTML={{ __html: rules.length ? html : 'Your workspace is empty. Add a rule or choose a starter template to generate output.' }} />
           </details>
         </section>
       </main>
@@ -440,7 +503,7 @@ export default function App() {
               <button className="ghost" onClick={() => saveFile(example + '\n', `firewall-rules-template-${target}.${ext}`, ext === 'csv' ? 'text/csv' : 'application/json')}>Download template</button>
               <span className="spacer" />
               <button className="ghost" onClick={() => setImportOpen(false)}>Cancel</button>
-              <button className="primary" onClick={doImport} disabled={!csv.trim()}>Import</button>
+              <button className="action-button import-action" onClick={doImport} disabled={!csv.trim()}><ButtonIcon name="import" />Import</button>
             </div>
           </div>
         </div>

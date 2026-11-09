@@ -36,14 +36,38 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 - 🌗 Light / dark mode toggle (follows your system by default, remembered per browser), with a matching icon for each
 - 📂 Collapsible Policy workspace and Generated output, both expanded by default; collapsing preserves rules and the selected workspace tab
 - 🧩 Platforms with switchable output formats (e.g. NSX: Terraform / PowerShell, Azure Local: az CLI / Bicep, Linux: native / Ansible)
+- 🎨 Distinct Import / Export / Clear all action colors and decorative icons, neutral Rules / Topology view tabs, and format-specific output colors with selection checkmarks and keyboard focus states in both themes. Equal-sized product buttons sit in a separate labeled box. Action selectors use green ALLOW, red DROP and amber REJECT; native dropdown menus may retain operating-system styling
 - 📝 Linked **Rules / Topology** tabs: inline rule editing, enable/disable, reorder, duplicate and delete, plus a live SVG rule-intent map with a shared editor, search, chain filters and disabled-rule visibility
 - 📚 Well-known endpoints (Any, Internet, RFC1918, public DNS) and services (HTTP(S), SSH, RDP, DNS, LDAP, SMB, WinRM, SQL and more)
 - 🎛️ Extra columns that change with the selected target (priority, logging, zone, profile, applied-to scope and so on); firewalld rules can be permanent or runtime-only, per rule
 - ✅ Validation: duplicate or empty names, invalid ports and CIDRs, allow any-any, shadowed rules
 - 📥 Import / export as CSV or JSON (switchable). JSON is lossless; CSV is spreadsheet-friendly and its columns follow the selected target (e.g. NSX adds scope / logging / notes, Azure Local adds priority), with a built-in template, 📋 copy and 💾 download of the generated output
+- 🧰 New workspaces start empty, with configurable **SSH server**, **Web server** and **DNS server** starter templates. Templates append rules without replacing existing work; saved configurations are preserved
 - 🗂️ Rules are saved in your browser's local storage
 - 🔗 Share link: the whole rule set is compressed into the URL hash (nothing is uploaded)
 - ⚠️ Per-target warnings, e.g. no reject on Windows/Cisco, Windows block-before-allow, default-accept chains
+
+## 🧰 Starter templates
+
+A new browser workspace starts with no rules; existing saved rules and shared configurations still load normally. Each icon-labelled **Starter templates** button adds its rules immediately, without a separate address form: **SSH** adds one TCP 22 rule, **Web** one HTTPS TCP 443 rule, and **DNS** two rules for UDP and TCP 53. All starters are **disabled**, with editable `Any` source/destination defaults. Set the intended client/server addresses in the normal rule editor and enable each rule only after review. No HTTP rule is silently added; use the editor or Add rule if HTTP is required.
+
+Each application creates fresh IDs and unique names and inserts rules in recipe order at the end of Unsectioned, before later named sections if present, without changing existing rules. Templates can be used repeatedly, or you can add/import rules manually. Disabled starters remain disabled in saved/exported/shared configurations and do not emit active firewall rules. CSV exports include a trailing `enabled` column; imports without it retain the legacy enabled-by-default behavior, including older headerless target-specific rows.
+
+These are inbound **allow-rule starters**, not complete hardening policies. They do not add default-deny, NAT, established/related or return-traffic rules. Review addresses, evaluation order, priorities, zones, scope and the target's defaults before enabling/applying. For MikroTik, starters use `forward` for traffic through the router; change Chain to `input` for services on the router or `output` for router-originated traffic when appropriate. Templates do not restrict the editor's existing address capabilities. Empty workspaces show an output placeholder with Copy and Download disabled, rather than generating an empty firewall configuration.
+
+## 🗂️ Experimental rule sections
+
+**Flat list remains the default.** Switch to **Sections** to create named collapsible sections alongside permanent **Unsectioned**. Drag a rule onto a section or use its Move menu to change its actual evaluation position. Within a section's contiguous run, drag above/below another rule or use the local up/down controls; disabled rules retain their positions and section boundaries are protected. Global position numbers show the underlying rule order, not an effective-policy simulation. Flat list keeps whole-list ordering controls.
+
+Add rule sits at the bottom of Flat list, in each section footer, and below the Topology workspace. Templates, imports and duplication enter the end of Unsectioned, which can precede later named sections. Section-local Add rule appends directly to that section's evaluation position. No presentation-only sorting is performed.
+
+**Section labels, membership and the separate-policy output selection are temporary:** they reset on reload and are not included in local storage, CSV / JSON or share links. The actual reordered rules and their fields remain saved/exported/shared normally. Reloaded rules return to Unsectioned and NSX returns to single-policy output. This is an experimental organizer, not a persisted policy-group data model; retain the reviewed generated artifact if you need to reproduce a deployment.
+
+For **NSX Terraform, REST PowerShell and SDK PowerShell**, optionally enable **one policy per section**. Enabled rules are emitted in contiguous section order with unique policy and rule sequence numbers. Separate, repeated runs of the same section block this mode rather than silently sorting rules. Empty or all-disabled sections do not emit policies. Rule actions, matchers, direction, scope, logging, category and project context are retained. Review placement against existing NSX policies: sequence numbers are unique within this output, not reserved globally, and updates are not atomic across policies. Switching modes or regenerating after section metadata is lost changes generated resource identities; review Terraform plans for recreation/deletion, and manage obsolete REST/SDK policy objects manually. No catch-all deny is inserted.
+
+For **Windows PowerShell**, section names appear as comments with spacing between sections, while adjacent commands within a section have no blank line between them. Sections do not change Windows' block-before-allow evaluation or create separate Windows policy objects. Other target formats retain their existing generators and use actual rule order where supported.
+
+NSX policy/rule ordering and project/category fields were checked against [NSXT provider 3.12.0 documentation](https://github.com/vmware/terraform-provider-nsxt/blob/v3.12.0/docs/resources/policy_security_policy.md); the provider remains constrained to 3.x. Windows commands retain [`New-NetFirewallRule`](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule?view=windowsserver2025-ps) semantics. Behavioral tests cover grouping and escaping; PowerShell syntax checks are separate from live verification. No live NSX deployment, grouped Terraform apply or Windows firewall application has been performed. Default-deny controls and target-aware fallback generation are deliberately not part of this change.
 
 ## 🗺️ Rule-intent topology
 
