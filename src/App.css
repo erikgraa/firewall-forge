@@ -31,6 +31,7 @@
   --t-f: #67e8f9;
   --t-v: #fca5a5;
   --t-k: #c4b5fd;
+  --action-add: #fcd34d;
   --action-import: #93c5fd;
   --action-export: #6ee7b7;
   --action-clear: #fda4af;
@@ -74,6 +75,7 @@
   --t-f: #0e7490;
   --t-v: #b91c1c;
   --t-k: #6d28d9;
+  --action-add: #854d0e;
   --action-import: #1d4ed8;
   --action-export: #065f46;
   --action-clear: #991b1b;
@@ -141,6 +143,7 @@ button.primary:hover { filter: brightness(1.1); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button:disabled:active { transform: none; }
 button.action-button { border-color: var(--action-color); color: var(--action-color); background: color-mix(in srgb, var(--action-color) 12%, var(--panel)); font-weight: 600; }
+button.add-action { --action-color: var(--action-add); }
 button.import-action { --action-color: var(--action-import); }
 button.export-action { --action-color: var(--action-export); }
 button.clear-action { --action-color: var(--action-clear); }

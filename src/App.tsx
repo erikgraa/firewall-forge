@@ -362,7 +362,7 @@ export default function App() {
           </div>
           <div id="topology-view" role="tabpanel" aria-labelledby="topology-view-tab" hidden={workspaceView !== 'topology'}>
             {workspaceView === 'topology' && <Topology rules={rules} target={target} platformLabel={platforms.find((platform) => platform.platform === current.platform)?.label ?? current.label} selectedId={activeRuleId} onSelect={setSelectedRuleId} onPatch={patch} onOpenTable={openTableRule} extraFields={(rule) => <div className="topology-extra">{extras.map((key) => <div key={key} className="topology-field" role="group" aria-label={COLUMNS[key].label}><span>{COLUMNS[key].label}</span>{renderExtra(rule, key)}</div>)}</div>} />}
-            {workspaceView === 'topology' && <div className="rule-add-footer"><button className="primary" onClick={() => addRule()}><ButtonIcon name="add" />Add rule</button></div>}
+            {workspaceView === 'topology' && <div className="rule-add-footer"><button className="ghost action-button add-action" onClick={() => addRule()}><ButtonIcon name="add" />Add rule</button></div>}
           </div>
           <div id="rules-view" role="tabpanel" aria-labelledby="rules-view-tab" hidden={workspaceView !== 'rules'}>
             <GroupedRules rules={rules} membership={membership} titles={sectionTitles} setTitles={setSectionTitles} onMove={moveToSection} onAdd={addRule} onReorder={reorderWithinSection}>{(entries, controls) => <div className="table">
