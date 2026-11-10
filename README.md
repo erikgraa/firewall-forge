@@ -4,6 +4,8 @@
 
 # 🔥 Firewall Forge
 
+[![GitHub release](https://img.shields.io/github/v/release/erikgraa/firewall-forge?label=release)](https://github.com/erikgraa/firewall-forge/releases)
+
 **Define your firewall rules once — forge config for every platform.** 🛡️
 
 A static TypeScript + React app. Everything runs in your browser, nothing is sent anywhere. 🔒
@@ -156,7 +158,11 @@ Preview changes take effect after deployment, and Discord/other services may cac
 
 ## 📋 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and release-note guidance.
+See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and the release checklist. The initial version baseline is **0.8.0** (release tag **v0.8.0**). The footer displays the app version injected by Vite from `package.json` in development, tests and production; update package/lock versions together with `npm version <version> --no-git-tag-version`, rather than editing a second footer constant. Restart the dev server after a version change.
+
+The README badge tracks the latest **published GitHub release**, not an unpublished package version or tag alone; badge caches may delay newly published releases. Before 1.0, minor releases may introduce incompatible changes; use patch releases for compatible fixes and document breaking changes/migrations explicitly. Version 0.8.0 is a project maturity baseline, not evidence of eight previous releases or complete live validation across targets. See [docs/SOURCES.md](docs/SOURCES.md) for verification gaps.
+
+Scheduled provider refreshes can rebuild the same app version with newer provider constraints within the supported majors. The footer version is not a unique build identifier or a guarantee of byte-identical artifacts.
 
 ## 📚 Product and tool references
 
