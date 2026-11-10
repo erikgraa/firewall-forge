@@ -1241,8 +1241,9 @@ export const TARGETS: Target[] = generators.map((target) => ({
   generate: (rules, options) => {
     const errors = disabledOutputErrors(rules, target.id)
     if (errors.length && target.platform !== 'mikrotik') return blockedDisabledOutput(errors.map((issue) => issue.message), target.id)
-    const code = target.generate(rules, options)
     const warning = disabledRuleWarning(rules, target.id)
+    if (target.format === 'Ansible' && warning && !rules.some((rule) => rule.enabled)) return ''
+    const code = target.generate(rules, options)
     const prefix = target.filename.endsWith('.bicep') ? '//' : target.id === 'cisco' ? '!' : '#'
     return warning ? code.replace(/^(#![^\n]*\n)?/, (_match, shebang: string | undefined) => `${shebang ?? ''}${prefix} WARNING: ${warning}\n`) : code
   },

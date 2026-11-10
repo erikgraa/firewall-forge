@@ -26,6 +26,7 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Fixed
 
+- Leave all-disabled firewalld, iptables, nftables and Cisco ACL Ansible output blank instead of generating warning-only comments or empty configuration tasks. Keep the UI deployment warning and mixed-input code warnings; PAN-OS Ansible native disabled rules remain unchanged.
 - Retain disabled rules using native states in Windows, NSX, PAN-OS, FMC and MikroTik outputs, including disabled-only sections, dependencies and ordering. Unsupported formats still omit disabled rules but warn in the UI and generated code; invalid retained rules block output rather than generate a partial managed policy.
 - Show the experimental-sections warning only in Sections view, not the default Flat view.
 - Dismiss the latest SSH/Web/DNS addition notice after changing one of its new rules' source or destination in Rules or Topology, without enabling the rules.

@@ -443,7 +443,7 @@ describe('native disabled-rule output', () => {
     expect(native[6]).toContain('disabled=no')
   })
 
-  it.each(TARGETS.filter((target) => !supportsDisabledRules(target.id)))('$id omits unsupported disabled rules with UI and exported-code warnings', (target) => {
+  it.each(TARGETS.filter((target) => !supportsDisabledRules(target.id)))('$id keeps omission warnings and follows its all-disabled output convention', (target) => {
     const rules = [rule({ name: 'inactive-test-rule', enabled: false }), rule({ name: 'inactive-second', enabled: false })]
     const output = generateGroupedOutput(rules, target.id, opts, [], {}, false)
     expect(output.blocked).toBe(false)
@@ -452,12 +452,39 @@ describe('native disabled-rule output', () => {
     expect(output.warnings[0]).toContain('does not disable an existing deployed rule')
     expect(output.warnings[0]).toContain('may remove previously managed rules')
     const prefix = target.filename.endsWith('.bicep') ? '//' : target.id === 'cisco' ? '!' : '#'
-    expect(output.code).toContain(`${prefix} WARNING: ${output.warnings[0]}`)
+    if (target.format === 'Ansible') expect(output.code).toBe('')
+    else expect(output.code).toContain(`${prefix} WARNING: ${output.warnings[0]}`)
     expect(output.code).not.toContain('inactive-test-rule')
     expect(output.code).not.toContain('inactive-second')
     const enabled = out(target.id, [{ ...rules[0], enabled: true }])
     expect(enabled).not.toContain('disabled rule omitted')
     if (enabled.startsWith('#!')) expect(output.code.split('\n')[0]).toBe(enabled.split('\n')[0])
+  })
+
+  describe.each(TARGETS.filter((target) => target.format === 'Ansible' && !supportsDisabledRules(target.id)))('$id unsupported disabled-rule output', (target) => {
+    it.each([1, 2])('returns truly empty output for %i disabled rules while retaining the UI warning', (count) => {
+      const rules = Array.from({ length: count }, (_, index) => rule({ name: `inactive-${index}`, enabled: false, direction: 'Outbound' }))
+      const before = JSON.stringify(rules)
+      expect(out(target.id, rules)).toBe('')
+      const output = generateGroupedOutput(rules, target.id, opts, [], {}, false)
+      expect(output.code).toBe('')
+      expect(output.blocked).toBe(false)
+      expect(output.warnings).toHaveLength(1)
+      expect(output.warnings[0]).toContain(`${count} disabled rule${count === 1 ? '' : 's'} omitted`)
+      expect(output.warnings[0]).toContain('Omission does not disable an existing deployed rule')
+      expect(JSON.stringify(rules)).toBe(before)
+    })
+
+    it('preserves the warning and enabled configuration for mixed inputs', () => {
+      const rules = [rule({ name: 'inactive-first', enabled: false }), rule({ name: 'active-middle' }), rule({ name: 'inactive-last', enabled: false })]
+      const output = generateGroupedOutput(rules, target.id, opts, [], {}, false)
+      expect(output.code).toContain('# WARNING: 2 disabled rules omitted:')
+      expect(output.code).toContain('active-middle')
+      expect(output.code).not.toContain('inactive-first')
+      expect(output.code).not.toContain('inactive-last')
+      expect(output.code.slice(output.code.indexOf('\n') + 1)).toBe(out(target.id, [rules[1]]))
+      expect(output.warnings[0]).toContain('Omission does not disable an existing deployed rule')
+    })
   })
 
   it('does not treat disabled allows or denies as active evaluation rules', () => {

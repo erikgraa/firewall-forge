@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import App from './App'
 import { TARGETS } from './generators'
+import { supportsDisabledRules } from './disabledRules'
 import { blankRule } from './model'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -103,6 +104,35 @@ describe('generated output', () => {
     expect(output).toContain('<details open=""><summary class="output-summary">Generated output</summary>')
     expect(output).toContain('aria-label="Firewall platform"')
     expect(output).toContain('<pre class="code">')
+  })
+})
+
+describe.each(TARGETS.filter((target) => target.format === 'Ansible' && !supportsDisabledRules(target.id)))('$id omitted Ansible rules', (target) => {
+  const render = (count: number, mixed = false) => {
+    const rules = Array.from({ length: count }, (_, index) => ({ ...blankRule(), name: `inactive-${index}`, enabled: false }))
+    if (mixed) rules.push({ ...blankRule(), name: 'active-rule', enabled: true })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === 'fwgen.v2' ? JSON.stringify({ rules, target: target.id, policyName: 'test' }) : null })
+    return renderToStaticMarkup(<App />).replace(/<svg class="button-icon"[\s\S]*?<\/svg>/g, '')
+  }
+
+  it.each([1, 2])('keeps the deployment warning with blank output and disabled actions for %i disabled rules', (count) => {
+    const markup = render(count)
+    expect(markup).toContain('<pre class="code"></pre>')
+    expect(markup).toContain(`${count} disabled rule${count === 1 ? '' : 's'} omitted:`)
+    expect(markup).toContain('Omission does not disable an existing deployed rule')
+    expect(markup).toContain(`disabled="">Download ${target.filename}</button>`)
+    expect(markup).toContain('disabled="">Copy</button>')
+    expect(markup).not.toContain('Your workspace is empty.')
+    expect(markup.match(/data-table-rule-id=/g)).toHaveLength(count)
+  })
+
+  it('keeps mixed-input warnings and allows copying/downloading enabled configuration', () => {
+    const markup = render(2, true)
+    expect(markup).toContain('2 disabled rules omitted:')
+    expect(markup).toContain('Omission does not disable an existing deployed rule')
+    expect(markup).not.toContain('<pre class="code"></pre>')
+    expect(markup).not.toContain(`disabled="">Download ${target.filename}</button>`)
+    expect(markup).not.toContain('disabled="">Copy</button>')
   })
 })
 
