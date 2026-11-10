@@ -4,8 +4,47 @@ import App from './App'
 import { TARGETS } from './generators'
 import { supportsDisabledRules } from './disabledRules'
 import { blankRule } from './model'
+import { serializeWorkspace, WORKSPACE_KEY } from './workspace'
+import { emptySections } from './sections'
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('persisted section workspace', () => {
+  it.each(['windows', 'nsx', 'fmc'] as const)('%s restores named sections on reload and shows relevant CSV metadata-loss disclosure', (target) => {
+    const rules = [{ ...blankRule(), id: 'saved-a', name: 'first' }, { ...blankRule(), id: 'saved-b', name: 'second', enabled: false }]
+    const sections = { ...emptySections(), titles: { unsectioned: 'Unsectioned', a: 'Saved application', b: 'Saved disabled' }, membership: { 'saved-a': 'a', 'saved-b': 'b' }, nsxSeparatePolicies: true }
+    const stored = serializeWorkspace({ rules, target, policyName: 'restored', sections })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('CSV is rule-only: section names, membership and NSX policy layout are not included.')
+    expect(markup).not.toContain('Section metadata is temporary')
+    expect(markup).toContain('value="restored"')
+    if (target === 'windows') {
+      expect(markup).toContain('Group: Saved application')
+      expect(markup).toContain('Group: Saved disabled')
+      expect(markup).toContain('Windows sections are editor organization')
+    }
+    if (target === 'nsx') expect(markup).toContain('value="separate" selected=""')
+  })
+
+  it('shows no section persistence or CSV loss warning for an ordinary unsectioned Windows workspace', () => {
+    const stored = serializeWorkspace({ rules: [{ ...blankRule(), name: 'plain' }], target: 'windows', policyName: 'plain' })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).not.toContain('CSV is rule-only:')
+    expect(markup).not.toContain('Windows sections are editor organization')
+    expect(markup).not.toContain('Section metadata is temporary')
+  })
+
+  it('surfaces malformed section metadata while retaining saved rule order', () => {
+    const rules = [{ ...blankRule(), name: 'first-malformed' }, { ...blankRule(), name: 'last-malformed' }]
+    const stored = JSON.stringify({ version: 3, rules, target: 'windows', policyName: 'test', sections: null })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('Invalid or unsupported section metadata was ignored')
+    expect(markup.indexOf('value="first-malformed"')).toBeLessThan(markup.indexOf('value="last-malformed"'))
+  })
+})
 
 describe('policy workspace', () => {
   it('starts expanded with accessible tabs and a clean slate for new users', () => {

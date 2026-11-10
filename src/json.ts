@@ -1,5 +1,22 @@
 import { ROUTEROS_CHAINS, blankRule, newId, sampleRules } from './model'
 import type { Rule, TargetId } from './model'
+import { restoreSections, serializeSections } from './sections'
+import type { SectionState } from './sections'
+
+interface JsonMeta {
+  target: TargetId
+  policyName: string
+  nsxProject?: string
+  nsxCategory?: string
+  sections?: SectionState
+}
+export interface JsonImport {
+  rules: Rule[]
+  error?: string
+  sections?: SectionState
+  warnings?: string[]
+  meta?: Partial<Omit<JsonMeta, 'sections'>>
+}
 
 export type DataFormat = 'csv' | 'json'
 
@@ -14,9 +31,9 @@ const ENUMS: Partial<Record<keyof Rule, readonly string[]>> = {
 }
 
 // Lossless: every rule field is kept, including per-target options and the enabled switch.
-export const toJson = (rules: Rule[], meta: { target: TargetId; policyName: string }): string =>
+export const toJson = (rules: Rule[], meta: JsonMeta): string =>
   JSON.stringify(
-    { format: FORMAT_ID, version: 1, target: meta.target, policyName: meta.policyName, rules: rules.map(({ id: _id, ...rest }) => rest) },
+    { format: FORMAT_ID, version: 2, target: meta.target, policyName: meta.policyName, nsxProject: meta.nsxProject, nsxCategory: meta.nsxCategory, sections: serializeSections(rules, meta.sections), rules: rules.map(({ id: _id, ...rest }) => rest) },
     null,
     2,
   ) + '\n'
@@ -24,14 +41,17 @@ export const toJson = (rules: Rule[], meta: { target: TargetId; policyName: stri
 export const jsonExample = (meta: { target: TargetId; policyName: string }): string => toJson(sampleRules(), meta).trimEnd()
 
 // Accepts the export format or a bare array. RouterOS imports reject invalid fields rather than silently changing packet flow.
-export const parseJson = (text: string, target?: TargetId): { rules: Rule[]; error?: string } => {
+export const parseJson = (text: string, target?: TargetId): JsonImport => {
   let data: unknown
   try {
     data = JSON.parse(text)
   } catch (e) {
     return { rules: [], error: `Not valid JSON: ${(e as Error).message}` }
   }
-  const list = Array.isArray(data) ? data : (data as { rules?: unknown } | null)?.rules
+  const envelope = !Array.isArray(data) && data !== null && typeof data === 'object' ? data as Record<string, unknown> : undefined
+  if (envelope?.format === FORMAT_ID && envelope.version !== 1 && envelope.version !== 2)
+    return { rules: [], error: 'Unsupported Firewall Forge JSON version; no rules were imported.' }
+  const list = Array.isArray(data) ? data : envelope?.rules
   if (!Array.isArray(list)) return { rules: [], error: 'Expected an array of rules or an object with a "rules" array.' }
 
   if (list.some((item) => item !== null && typeof item === 'object' && 'routerosChain' in item && !ROUTEROS_CHAINS.includes(item.routerosChain as Rule['routerosChain'])))
@@ -65,5 +85,15 @@ export const parseJson = (text: string, target?: TargetId): { rules: Rule[]; err
       }
       return out as unknown as Rule
     })
-  return rules.length ? { rules } : { rules: [], error: 'No rules found in the JSON.' }
+  if (!rules.length && list.length) return { rules: [], error: 'No rules found in the JSON.' }
+  if (!rules.length && envelope?.sections === undefined) return { rules: [], error: 'No rules found in the JSON.' }
+  const indexes = list.flatMap((item, index) => typeof item === 'object' && item !== null && !Array.isArray(item) ? [index] : [])
+  const restored = envelope?.sections === undefined && envelope?.version !== 2 ? undefined : restoreSections(envelope?.sections ?? null, rules, indexes, list.length)
+  const meta = envelope ? {
+    target: typeof envelope.target === 'string' ? envelope.target as TargetId : undefined,
+    policyName: typeof envelope.policyName === 'string' ? envelope.policyName : undefined,
+    nsxProject: typeof envelope.nsxProject === 'string' ? envelope.nsxProject : undefined,
+    nsxCategory: typeof envelope.nsxCategory === 'string' ? envelope.nsxCategory : undefined,
+  } : undefined
+  return { rules, ...restored, meta }
 }

@@ -1,5 +1,7 @@
 import { blankRule, newId } from './model'
 import type { Rule, TargetId } from './model'
+import { restoreSections, serializeSections } from './sections'
+import type { SectionState } from './sections'
 
 export interface ShareState {
   rules: Rule[]
@@ -7,9 +9,11 @@ export interface ShareState {
   policyName: string
   nsxProject?: string
   nsxCategory?: string
+  sections?: SectionState
+  warnings?: string[]
 }
 
-const VERSION = '1'
+const VERSION = '2'
 const PREFIX = 's='
 
 const toB64Url = (bytes: Uint8Array) => {
@@ -41,7 +45,7 @@ const compact = (rule: Rule): Partial<Rule> => {
 }
 
 export const encodeState = async (state: ShareState): Promise<string> => {
-  const json = JSON.stringify({ t: state.target, n: state.policyName, j: state.nsxProject || undefined, c: state.nsxCategory || undefined, r: state.rules.map(compact) })
+  const json = JSON.stringify({ t: state.target, n: state.policyName, j: state.nsxProject || undefined, c: state.nsxCategory || undefined, s: serializeSections(state.rules, state.sections), r: state.rules.map(compact) })
   const bytes = await pipe(new TextEncoder().encode(json), new CompressionStream('deflate-raw'))
   return `${PREFIX}${VERSION}.${toB64Url(bytes)}`
 }
@@ -50,17 +54,19 @@ export const decodeState = async (fragment: string): Promise<ShareState | null> 
   const clean = fragment.replace(/^#/, '')
   if (!clean.startsWith(PREFIX)) return null
   const [version, payload] = clean.slice(PREFIX.length).split('.')
-  if (version !== VERSION || !payload) return null
+  if ((version !== VERSION && version !== '1') || !payload) return null
   try {
     const bytes = await pipe(fromB64Url(payload), new DecompressionStream('deflate-raw'))
-    const data = JSON.parse(new TextDecoder().decode(bytes)) as { t: TargetId; n: string; j?: string; c?: string; r: Partial<Rule>[] }
-    if (!Array.isArray(data.r)) return null
+    const data = JSON.parse(new TextDecoder().decode(bytes)) as { t: TargetId; n: string; j?: string; c?: string; s?: unknown; r: Partial<Rule>[] }
+    if (!data || !Array.isArray(data.r)) return null
+    const rules = data.r.map((r) => ({ ...blankRule(), ...r, id: newId() }))
     return {
       target: data.t,
       policyName: data.n ?? 'generated',
       nsxProject: data.j ?? '',
       nsxCategory: data.c ?? '',
-      rules: data.r.map((r) => ({ ...blankRule(), ...r, id: newId() })),
+      rules,
+      ...restoreSections(version === VERSION ? data.s ?? null : undefined, rules),
     }
   } catch {
     return null

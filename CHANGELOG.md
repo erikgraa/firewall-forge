@@ -6,6 +6,16 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 <!-- Add post-0.8.0 changes here; do not invent entries for earlier releases. -->
 
+### Added
+
+- Versioned browser-local workspace, JSON and share-link persistence for section titles, stable IDs, membership and NSX separate-policy layout, preserving exact evaluation order and empty sections. Older rule-only formats remain readable.
+- Safe handling of malformed/stale section references and unsupported saved workspace versions, plus guarded section-aware JSON append without silent section identity merging.
+
+### Changed
+
+- Replaced obsolete temporary-section notices with accurate persistence guidance. Windows section warnings now appear only for populated named sections and clarify that sections are editor organization, not native Windows policy objects.
+- CSV remains rule-only, with relevant section-loss disclosures; JSON/share links preserve the sectioned workspace. Flat view remains the default and presentation preferences are not persisted.
+
 ## [0.8.0] - 2026-11-10
 
 Initial pre-1.0 version baseline. It collects the existing browser-only multi-target rule editor/generators, import/export/share support, and the merged improvements below. No earlier numbered releases are implied.
