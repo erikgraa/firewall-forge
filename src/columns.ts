@@ -44,6 +44,7 @@ export const EXTRA_COLUMNS: Record<TargetId, ColKey[]> = {
   iptables: ['logging'],
   'iptables-ansible': ['logging'],
   fmc: ['srcZone', 'dstZone', 'logging', 'notes'],
+  'fmc-ansible': ['srcZone', 'dstZone', 'logging', 'notes'],
   panos: ['srcZone', 'dstZone', 'logging', 'notes'],
   'panos-1x': ['srcZone', 'dstZone', 'logging', 'notes'],
   'panos-ansible': ['srcZone', 'dstZone', 'logging', 'notes'],

@@ -8,6 +8,7 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ### Added
 
+- Cisco FMC Ansible output using `cisco.fmcansible` 1.1.1 native modules: a dedicated BLOCK-default access policy, retained enabled/disabled rules, IPv4/network and security-zone references, protocol/port literals, action-aware connection logging and notes. Ownership, unmanaged-condition and ordered-prefix guards stop conflicting changes before writes; credentials remain external and no device assignment/deployment is generated. Live FMC validation is outstanding.
 - Versioned browser-local workspace, JSON and share-link persistence for section titles, stable IDs, membership and NSX separate-policy layout, preserving exact evaluation order and empty sections. Older rule-only formats remain readable.
 - Safe handling of malformed/stale section references and unsupported saved workspace versions, plus guarded section-aware JSON append without silent section identity merging.
 

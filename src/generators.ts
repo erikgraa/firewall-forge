@@ -3,6 +3,7 @@ import { requiredProviders } from './providers'
 import { blockedDisabledOutput, disabledRuleWarning } from './disabledRules'
 import { disabledOutputErrors } from './validate'
 import { mikrotik, mikrotikTerraform } from './routeros'
+import { fmcAnsible } from './fmcAnsible'
 import { DEFAULT_NSX_CATEGORY } from './model'
 import type { Rule, TargetId } from './model'
 
@@ -1229,6 +1230,7 @@ const generators: Target[] = [
   { id: 'cisco-ansible', platform: 'cisco', label: 'Cisco ACL', format: 'Ansible', filename: 'cisco-acl.yml', generate: ciscoAnsible },
   { id: 'cisco-tf', platform: 'cisco', label: 'Cisco ACL', format: 'Terraform (IOS XE)', filename: 'cisco-acl.tf', generate: ciscoTerraform },
   { id: 'fmc', platform: 'fmc', label: 'Cisco FMC', format: 'Terraform', filename: 'fmc.tf', generate: fmc },
+  { id: 'fmc-ansible', platform: 'fmc', label: 'Cisco FMC', format: 'Ansible', filename: 'fmc.yml', generate: fmcAnsible },
   { id: 'panos', platform: 'panos', label: 'Palo Alto', format: 'Terraform 2.x', filename: 'panos.tf', generate: panos },
   { id: 'panos-ansible', platform: 'panos', label: 'Palo Alto', format: 'Ansible', filename: 'panos.yml', generate: panosAnsible },
   { id: 'panos-1x', platform: 'panos', label: 'Palo Alto', format: 'Terraform 1.x', filename: 'panos-1x.tf', generate: panos1 },

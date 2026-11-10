@@ -593,6 +593,408 @@ resource "fmc_access_control_policy" "generated" {
 "
 `;
 
+exports[`generators (snapshots) > fmc-ansible output is stable 1`] = `
+"# Requires cisco.fmcansible == 1.1.1 and ansible-core >= 2.16 (traditional FMC HTTPAPI).
+# Use a maintained ansible-core/Python combination; >= 2.16 is the collection minimum.
+# Install: ansible-galaxy collection install cisco.fmcansible:1.1.1
+# External inventory group: fmc; set ansible_host, ansible_user, Vault-protected
+# ansible_password and fmc_domain_uuid. Use a dedicated API account and trusted CA.
+# Network names refer to existing Network objects only, not Host/NetworkGroup objects.
+# IPv4 literals and ICMPv4 only; Any is unrestricted. Direction is not used: set zones.
+# A dedicated policy defaults to BLOCK. Existing rules must be an identical prefix;
+# edits/deletions/reordering and inherited or advanced policy settings stop for review.
+# Not atomic: interrupted creation may leave an undeployed partial policy; rerun safely
+# only after checking it. No device assignment, policy deletion or deployment is performed.
+# Collection/API availability, response normalization and idempotency need live testing.
+---
+- name: Configure a guarded dedicated FMC access policy
+  hosts: fmc
+  connection: ansible.netcommon.httpapi
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    ansible_network_os: cisco.fmcansible.fmc
+    ansible_httpapi_use_ssl: true
+    ansible_httpapi_validate_certs: true
+    ansible_httpapi_port: 443
+    forge_policy_name: !unsafe "generated"
+    forge_ownership: "Managed by Firewall Forge FMC Ansible v1; dedicated BLOCK-default policy"
+    forge_policy_fields: ["id","name","type","description","defaultAction","links","metadata","rules","version"]
+    forge_rule_fields: ["id","name","type","action","enabled","description","logBegin","logEnd","sendEventsToFMC","logFiles","sourceNetworks","destinationNetworks","sourceZones","destinationZones","destinationPorts","links","metadata","version","commentHistoryList","variableSet"]
+    forge_desired_rules:
+      -
+        name: !unsafe "web-in"
+        type: !unsafe "AccessRule"
+        enabled: true
+        action: !unsafe "ALLOW"
+        logBegin: false
+        logEnd: false
+        sendEventsToFMC: false
+        logFiles: false
+        sourceNetworks:
+          literals:
+            -
+              type: !unsafe "Network"
+              value: !unsafe "10.0.0.0/8"
+            -
+              type: !unsafe "Network"
+              value: !unsafe "172.16.0.0/12"
+            -
+              type: !unsafe "Network"
+              value: !unsafe "192.168.0.0/16"
+        destinationNetworks:
+          literals:
+            -
+              type: !unsafe "Network"
+              value: !unsafe "10.10.10.0/24"
+        destinationPorts:
+          literals:
+            -
+              type: !unsafe "PortLiteral"
+              protocol: !unsafe "6"
+              port: !unsafe "443"
+      -
+        name: !unsafe "dns-out"
+        type: !unsafe "AccessRule"
+        enabled: true
+        action: !unsafe "ALLOW"
+        logBegin: false
+        logEnd: false
+        sendEventsToFMC: false
+        logFiles: false
+        destinationNetworks:
+          literals:
+            -
+              type: !unsafe "Host"
+              value: !unsafe "1.1.1.1"
+            -
+              type: !unsafe "Host"
+              value: !unsafe "8.8.8.8"
+        destinationPorts:
+          literals:
+            -
+              type: !unsafe "PortLiteral"
+              protocol: !unsafe "17"
+              port: !unsafe "53"
+      -
+        name: !unsafe "deny-rest"
+        type: !unsafe "AccessRule"
+        enabled: true
+        action: !unsafe "BLOCK"
+        logBegin: false
+        logEnd: false
+        sendEventsToFMC: false
+        logFiles: false
+  tasks:
+    - name: Require explicit domain and a normal configuration run
+      ansible.builtin.assert:
+        that:
+          - fmc_domain_uuid is defined
+          - fmc_domain_uuid is string
+          - fmc_domain_uuid is match('^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')
+          - not ansible_check_mode
+        fail_msg: Set fmc_domain_uuid in inventory; check mode cannot validate creation-dependent policy guards.
+
+    - name: Find the dedicated policy across all pages
+      cisco.fmcansible.fmc_configuration:
+        operation: getAllAccessPolicy
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+        filters:
+          name: "{{ forge_policy_name }}"
+        register_as: forge_policy_matches
+
+    - name: Reject ambiguous policy identity
+      ansible.builtin.assert:
+        that: forge_policy_matches | length <= 1
+        fail_msg: More than one policy matches; no configuration was changed.
+
+    - name: Read the complete existing policy
+      cisco.fmcansible.fmc_configuration:
+        operation: getAccessPolicy
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+          objectId: "{{ forge_policy_matches[0].id }}"
+        register_as: forge_existing_policy
+      when: forge_policy_matches | length == 1
+
+    - name: Refuse to adopt or modify an unrelated policy
+      ansible.builtin.assert:
+        that:
+          - forge_existing_policy.name == forge_policy_name
+          - forge_existing_policy.description | default('') == forge_ownership
+          - forge_existing_policy.defaultAction.action | default('') == 'BLOCK'
+          - forge_existing_policy.defaultAction | dict2items | rejectattr('key', 'in', ['id', 'type', 'action']) | selectattr('value') | list | length == 0
+          - not (forge_existing_policy.metadata | default({})).get('readOnly', false)
+          - not (forge_existing_policy.metadata | default({})).get('basePolicy', {})
+          - not (forge_existing_policy.metadata | default({})).get('parentPolicy', {})
+          - forge_existing_policy | dict2items | rejectattr('key', 'in', forge_policy_fields) | selectattr('value') | list | length == 0
+        fail_msg: Existing policy is not a plain dedicated Forge BLOCK policy; review it manually. No configuration was changed.
+      when: forge_policy_matches | length == 1
+
+    - name: Initialize the existing rule list
+      ansible.builtin.set_fact:
+        forge_existing_rules: []
+
+    - name: Read every existing rule in API evaluation order
+      cisco.fmcansible.fmc_configuration:
+        operation: getAllAccessRule
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+          containerUUID: "{{ forge_policy_matches[0].id }}"
+        query_params:
+          expanded: true
+        filters:
+          type: AccessRule
+        register_as: forge_existing_rules
+      when: forge_policy_matches | length == 1
+
+    - name: Reject deletions, insertions and reordering before any writes
+      ansible.builtin.assert:
+        that:
+          - forge_existing_rules | length <= forge_desired_rules | length
+          - forge_existing_rules | map(attribute='name') | list == (forge_desired_rules | map(attribute='name') | list)[:forge_existing_rules | length]
+          - forge_existing_rules | map(attribute='metadata.ruleIndex') | list == forge_existing_rules | map(attribute='metadata.ruleIndex') | sort | list
+          - forge_existing_rules | map(attribute='metadata.ruleIndex') | unique | list | length == forge_existing_rules | length
+        fail_msg: Existing rules must be an identical ordered prefix. Removal, renaming, insertion or reordering requires manual review; nothing was changed.
+
+    - name: Reject conflicting existing rule settings before any writes
+      ansible.builtin.assert:
+        that:
+          - item.0.action == item.1.action
+          - item.0.enabled == item.1.enabled
+          - item.0.description | default('') == item.1.description | default('')
+          - item.0.logBegin | default(false) == item.1.logBegin
+          - item.0.logEnd | default(false) == item.1.logEnd
+          - item.0.sendEventsToFMC | default(false) == item.1.sendEventsToFMC
+          - not (item.0.logFiles | default(false))
+          - item.0 | dict2items | rejectattr('key', 'in', forge_rule_fields) | selectattr('value') | list | length == 0
+          - item.0.metadata.ruleIndex is integer
+          - item.0.metadata.ruleIndex > 0
+          - not (item.0.metadata | default({})).get('readOnly', false)
+          - not (item.0.metadata | default({})).get('parentPolicy', {})
+          - not (item.0.metadata | default({})).get('inherited', false)
+          - (item.0.metadata | default({})).get('section', '') == 'Default'
+          - (item.0.metadata | default({})).get('category', '') == '--Undefined--'
+          - not (item.0.variableSet | default({})) or item.0.variableSet.name | default('') == 'Default Set'
+        fail_msg: Existing rule settings differ or include unmanaged conditions; review manually. Nothing was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Compare existing sourceNetworks without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.sourceNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.sourceNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.sourceNetworks | default({})).get('literals', []) == (item.1.sourceNetworks | default({})).get('literals', [])
+          - (item.0.sourceNetworks | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Existing sourceNetworks differs from generated intent; no configuration was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Compare existing destinationNetworks without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationNetworks | default({})).get('literals', []) == (item.1.destinationNetworks | default({})).get('literals', [])
+          - (item.0.destinationNetworks | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Existing destinationNetworks differs from generated intent; no configuration was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Compare existing sourceZones without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.sourceZones | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.sourceZones | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.sourceZones | default({})).get('literals', []) == (item.1.sourceZones | default({})).get('literals', [])
+          - (item.0.sourceZones | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Existing sourceZones differs from generated intent; no configuration was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Compare existing destinationZones without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationZones | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationZones | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationZones | default({})).get('literals', []) == (item.1.destinationZones | default({})).get('literals', [])
+          - (item.0.destinationZones | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Existing destinationZones differs from generated intent; no configuration was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Compare existing destinationPorts without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationPorts | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationPorts | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationPorts | default({})).get('literals', []) == (item.1.destinationPorts | default({})).get('literals', [])
+          - (item.0.destinationPorts | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Existing destinationPorts differs from generated intent; no configuration was changed.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Create the dedicated BLOCK policy only if absent
+      cisco.fmcansible.fmc_configuration:
+        operation: createAccessPolicy
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+        data:
+          name: "{{ forge_policy_name }}"
+          type: AccessPolicy
+          description: "{{ forge_ownership }}"
+          defaultAction:
+            action: BLOCK
+        register_as: forge_created_policy
+      when: forge_policy_matches | length == 0
+
+    - name: Select the guarded policy identity
+      ansible.builtin.set_fact:
+        forge_policy_id: "{{ forge_policy_matches[0].id if forge_policy_matches | length == 1 else forge_created_policy.id }}"
+
+    - name: Append only missing trailing rules in order (single-object requests)
+      cisco.fmcansible.fmc_configuration:
+        operation: createMultipleAccessRule
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+          containerUUID: "{{ forge_policy_id }}"
+        query_params:
+          section: default
+        data: "{{ item }}"
+      loop: "{{ forge_desired_rules[forge_existing_rules | length:] }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Read the final policy for ownership and default-action verification
+      cisco.fmcansible.fmc_configuration:
+        operation: getAccessPolicy
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+          objectId: "{{ forge_policy_id }}"
+        register_as: forge_existing_policy
+
+    - name: Verify final policy ownership and BLOCK default
+      ansible.builtin.assert:
+        that:
+          - forge_existing_policy.name == forge_policy_name
+          - forge_existing_policy.description | default('') == forge_ownership
+          - forge_existing_policy.defaultAction.action | default('') == 'BLOCK'
+          - forge_existing_policy.defaultAction | dict2items | rejectattr('key', 'in', ['id', 'type', 'action']) | selectattr('value') | list | length == 0
+          - not (forge_existing_policy.metadata | default({})).get('readOnly', false)
+          - not (forge_existing_policy.metadata | default({})).get('basePolicy', {})
+          - not (forge_existing_policy.metadata | default({})).get('parentPolicy', {})
+          - forge_existing_policy | dict2items | rejectattr('key', 'in', forge_policy_fields) | selectattr('value') | list | length == 0
+        fail_msg: Resulting policy settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+
+    - name: Verify the complete resulting order
+      cisco.fmcansible.fmc_configuration:
+        operation: getAllAccessRule
+        path_params:
+          domainUUID: "{{ fmc_domain_uuid }}"
+          containerUUID: "{{ forge_policy_id }}"
+        query_params:
+          expanded: true
+        filters:
+          type: AccessRule
+        register_as: forge_final_rules
+
+    - name: Require exact resulting rule order
+      ansible.builtin.assert:
+        that:
+          - forge_final_rules | map(attribute='name') | list == forge_desired_rules | map(attribute='name') | list
+          - forge_final_rules | map(attribute='metadata.ruleIndex') | list == forge_final_rules | map(attribute='metadata.ruleIndex') | sort | list
+          - forge_final_rules | map(attribute='metadata.ruleIndex') | unique | list | length == forge_final_rules | length
+        fail_msg: FMC returned an unexpected order. Do not assign or deploy this policy; inspect it manually.
+
+    - name: Select the final rules for full intent verification
+      ansible.builtin.set_fact:
+        forge_existing_rules: "{{ forge_final_rules }}"
+
+    - name: Reject conflicting existing rule settings after writes
+      ansible.builtin.assert:
+        that:
+          - item.0.action == item.1.action
+          - item.0.enabled == item.1.enabled
+          - item.0.description | default('') == item.1.description | default('')
+          - item.0.logBegin | default(false) == item.1.logBegin
+          - item.0.logEnd | default(false) == item.1.logEnd
+          - item.0.sendEventsToFMC | default(false) == item.1.sendEventsToFMC
+          - not (item.0.logFiles | default(false))
+          - item.0 | dict2items | rejectattr('key', 'in', forge_rule_fields) | selectattr('value') | list | length == 0
+          - item.0.metadata.ruleIndex is integer
+          - item.0.metadata.ruleIndex > 0
+          - not (item.0.metadata | default({})).get('readOnly', false)
+          - not (item.0.metadata | default({})).get('parentPolicy', {})
+          - not (item.0.metadata | default({})).get('inherited', false)
+          - (item.0.metadata | default({})).get('section', '') == 'Default'
+          - (item.0.metadata | default({})).get('category', '') == '--Undefined--'
+          - not (item.0.variableSet | default({})) or item.0.variableSet.name | default('') == 'Default Set'
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Verify resulting sourceNetworks without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.sourceNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.sourceNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.sourceNetworks | default({})).get('literals', []) == (item.1.sourceNetworks | default({})).get('literals', [])
+          - (item.0.sourceNetworks | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Verify resulting destinationNetworks without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationNetworks | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationNetworks | default({})).get('literals', []) == (item.1.destinationNetworks | default({})).get('literals', [])
+          - (item.0.destinationNetworks | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Verify resulting sourceZones without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.sourceZones | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.sourceZones | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.sourceZones | default({})).get('literals', []) == (item.1.sourceZones | default({})).get('literals', [])
+          - (item.0.sourceZones | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Verify resulting destinationZones without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationZones | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationZones | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationZones | default({})).get('literals', []) == (item.1.destinationZones | default({})).get('literals', [])
+          - (item.0.destinationZones | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+
+    - name: Verify resulting destinationPorts without API display metadata
+      ansible.builtin.assert:
+        that:
+          - (item.0.destinationPorts | default({})).get('objects', []) | map(attribute='id') | sort | list == (item.1.destinationPorts | default({})).get('objects', []) | map(attribute='id') | sort | list
+          - (item.0.destinationPorts | default({})).get('literals', []) == (item.1.destinationPorts | default({})).get('literals', [])
+          - (item.0.destinationPorts | default({})) | dict2items | rejectattr('key', 'in', ['objects', 'literals']) | selectattr('value') | list | length == 0
+        fail_msg: Resulting rule settings differ or cannot be verified. Do not assign or deploy; inspect the partial policy manually.
+      loop: "{{ forge_existing_rules | zip(forge_desired_rules) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+"
+`;
+
 exports[`generators (snapshots) > iptables output is stable 1`] = `
 "# web-in
 iptables -A INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -d 10.10.10.0/24 -p tcp --dport 443 -m comment --comment "web-in" -j ACCEPT
