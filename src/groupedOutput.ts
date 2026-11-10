@@ -11,7 +11,7 @@ export interface GroupedOutput {
   blocked: boolean
 }
 
-const temporary = 'Section metadata is temporary in this prototype; it is not persisted in saved rules or import/export.'
+const windowsSections = 'Windows sections are editor organization and output comments, not native Windows firewall policy objects or evaluation precedence.'
 const placement = 'Review placement versus existing NSX policies in the selected category and project. Generated policy sequence numbers are unique within this output, not reserved against existing policies. Updates are not atomic across policies.'
 const unverified = 'No live NSX or Terraform apply verification has been performed.'
 const comment = (text: string) => text.split(/\r\n|[\n\r\u2028\u2029\u0085]/u).map((line) => `# ${line}`).join('\n')
@@ -79,7 +79,7 @@ export function generateGroupedOutput(
 ): GroupedOutput {
   const omission = disabledRuleWarning(rules, targetId)
   const result = (code: string, warnings: string[] = [], blocked = false): GroupedOutput => ({ code, warnings: omission ? [omission, ...warnings] : warnings, blocked })
-  const block = (reason: string) => result(comment(`Grouped output blocked: ${reason}`) + '\n', [reason, temporary, unverified], true)
+  const block = (reason: string) => result(comment(`Grouped output blocked: ${reason}`) + '\n', [reason, unverified], true)
   if (!rules.length) return result('')
   const target = TARGETS.find((candidate) => candidate.id === targetId)!
   const errors = disabledOutputErrors(rules, targetId)
@@ -98,11 +98,11 @@ export function generateGroupedOutput(
       const commands = run.rules.map((rule) => target.generate([rule], options).slice(header.length, -1))
       return `${heading}\n${commands.join('\n')}`
     })
-    return result(blocks.length ? `${header}${blocks.join('\n\n')}\n` : '', [temporary])
+    return result(blocks.length ? `${header}${blocks.join('\n\n')}\n` : '', runs.some((run) => run.group !== 'unsectioned') ? [windowsSections] : [])
   }
 
   if (invalid) return block('Section metadata does not match the original rule array. Refresh grouping before generating separate policies.')
-  if (!outputRuns.length) return result('', [temporary])
+  if (!outputRuns.length) return result('')
   if (runs.some((run) => run.continued)) return block('A group has repeated noncontiguous membership (continued sections). Separate policies would require merging or reordering rules; make each group contiguous first.')
   if (outputRuns.length > 99999) return block('Too many sections for unique policy sequence numbers within the supported NSX range.')
   if (outputRuns.some((run) => policyId(run.group).length > 255)) return block('A section identity is too long for the prototype collision-safe policy ID encoding (255-character limit). Use a shorter metadata group identity.')
@@ -143,7 +143,7 @@ export function generateGroupedOutput(
     // JSON escapes embedded newlines, so a title cannot terminate this here-string.
     return `$body = @'\n${JSON.stringify(body, null, 2)}\n'@${command}\nif (-not $?) { throw ${psString(`Failed to apply section ${id}; stopping before the next policy.`)} }`
   })
-  const warnings = [placement, unverified, temporary]
+  const warnings = [placement, unverified]
   if (targetId === 'nsx-sdk') warnings.push('SDK ordering arguments were verified against VMware.Sdk.Nsx.Policy 4.1.2.22644671 package help; check compatibility with the installed module and NSX release before execution.')
   return result(`${comment(warnings.join('\n'))}\n\n${setup}${blocks.join('\n\n')}\n`, warnings)
 }

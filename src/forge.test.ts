@@ -885,7 +885,7 @@ describe('share links', () => {
   it('round-trips state and keeps links short', async () => {
     const rules = sampleRules()
     const fragment = await encodeState({ rules, target: 'cisco', policyName: 'demo' })
-    expect(fragment.startsWith('s=1.')).toBe(true)
+    expect(fragment.startsWith('s=2.')).toBe(true)
     expect(fragment.length).toBeLessThan(600)
     const back = await decodeState(`#${fragment}`)
     expect(back?.target).toBe('cisco')

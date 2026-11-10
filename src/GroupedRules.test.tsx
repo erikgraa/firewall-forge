@@ -48,7 +48,9 @@ describe('flat-first section prototype', () => {
     expect(markup.includes('Experimental rule sections')).toBe(sections)
     expect(markup.includes('class="preview-notice"')).toBe(sections)
     if (sections) {
-      expect(markup).toContain('labels and membership reset on reload')
+      expect(markup).toContain('saved in this browser and included in JSON / share links')
+      expect(markup).toContain('CSV remains rule-only.')
+      expect(markup).not.toMatch(/temporary|reset on reload/)
       expect(markup).toContain('Dragging or using Move changes actual evaluation order.')
       expect(markup).toContain('Separate NSX policy output affects deployment and requires review.')
       expect(markup.indexOf('Experimental rule sections')).toBeGreaterThan(markup.indexOf('Rule organization'))

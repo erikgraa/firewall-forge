@@ -133,7 +133,7 @@ describe('separate NSX policies', () => {
     expect(output.warnings.join(' ')).toMatch(/existing NSX policies/)
     expect(output.warnings.join(' ')).toMatch(/not atomic/)
     expect(output.warnings.join(' ')).toMatch(/No live NSX or Terraform apply verification/)
-    expect(output.warnings.join(' ')).toMatch(/not persisted/)
+    expect(output.warnings.join(' ')).not.toMatch(/temporary|not persisted/)
   })
 
   it('emits one REST connection setup, category/project and explicit policy/rule order', () => {

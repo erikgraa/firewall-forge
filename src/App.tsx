@@ -3,7 +3,7 @@ import { PLATFORMS, TARGETS } from './generators'
 import { highlight } from './highlight'
 import { csvColumns, csvExample, parseCsv, toCsv } from './csv'
 import { jsonExample, parseJson, toJson } from './json'
-import type { DataFormat } from './json'
+import type { DataFormat, JsonImport } from './json'
 import { validate } from './validate'
 import { decodeState, shareUrl } from './share'
 import { CUSTOM, ENDPOINTS, NSX_CATEGORIES, ROUTEROS_CHAINS, SERVICES, applyService, blankRule, newId, normalizeNsxCategory } from './model'
@@ -18,8 +18,8 @@ import ButtonIcon from './ButtonIcon'
 import { appendToUnsectioned, moveRuleToSection, reorderRuleWithinSection } from './sectionMoves'
 import { generateGroupedOutput } from './groupedOutput'
 import { sectionRuns } from './grouping'
-
-const STORAGE = 'fwgen.v2'
+import { appendSectionedRules, CSV_SECTION_NOTICE, emptySections, hasSections } from './sections'
+import { LEGACY_WORKSPACE_KEY, loadWorkspace, serializeWorkspace, WORKSPACE_KEY } from './workspace'
 const THEME_KEY = 'fwgen.theme'
 type Theme = 'dark' | 'light'
 
@@ -30,28 +30,9 @@ const initialTheme = (): Theme => {
 }
 let hashHandled = false
 
-interface Saved {
-  rules: Rule[]
-  target: TargetId
-  policyName: string
-  nsxProject?: string
-  nsxCategory?: string
-}
-
 const BASE_COLS = '44px 44px minmax(90px, 1fr) minmax(110px, 1.2fr) minmax(110px, 1.2fr) minmax(130px, 1.1fr) minmax(90px, .9fr) 104px 108px'
 
-const load = (): Saved => {
-  try {
-    const raw = localStorage.getItem(STORAGE)
-    if (raw) {
-      const saved = JSON.parse(raw) as Saved
-      return { ...saved, rules: saved.rules.map((r) => ({ ...blankRule(), ...r })) }
-    }
-  } catch {
-    /* ignore corrupt state */
-  }
-  return { rules: [], target: 'nsx', policyName: 'generated' }
-}
+const load = () => loadWorkspace(localStorage)
 
 export default function App() {
   const initial = useMemo(load, [])
@@ -82,9 +63,12 @@ export default function App() {
   const [copied, setCopied] = useState(false)
   const [shared, setShared] = useState<string | null>(null)
   const [templateNotice, setTemplateNotice] = useState<{ message: string; ruleIds: string[] } | null>(null)
-  const [membership, setMembership] = useState<Record<string, string>>({})
-  const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({ unsectioned: 'Unsectioned' })
-  const [nsxSeparatePolicies, setNsxSeparatePolicies] = useState(false)
+  const [membership, setMembership] = useState(initial.sections.membership)
+  const [sectionTitles, setSectionTitles] = useState(initial.sections.titles)
+  const [nsxSeparatePolicies, setNsxSeparatePolicies] = useState(initial.sections.nsxSeparatePolicies)
+  const [dataWarnings, setDataWarnings] = useState(initial.warnings)
+  const sections = { membership, titles: sectionTitles, nsxSeparatePolicies }
+  const sectioned = hasSections(rules, sections)
   const addTemplate = (added: Rule[], title: string) => {
     if (!added.length) return
     setRules((current) => appendToUnsectioned(current, added, membership))
@@ -126,17 +110,22 @@ export default function App() {
     if (hashHandled || !location.hash.startsWith('#s=')) return
     hashHandled = true
     const fragment = location.hash
-    const hadSaved = localStorage.getItem(STORAGE) !== null
+    const hadSaved = localStorage.getItem(WORKSPACE_KEY) !== null || localStorage.getItem(LEGACY_WORKSPACE_KEY) !== null
     history.replaceState(null, '', location.pathname + location.search)
     void decodeState(fragment).then((state) => {
       if (!state) return setShared('That share link could not be read.')
-      if (hadSaved && !window.confirm('Open the shared rules? This replaces the rules currently saved in this browser.')) return
+      if (hadSaved && !window.confirm('Open the shared workspace? This replaces the rules, sections and policy settings currently saved in this browser.')) return
       setRules(state.rules)
       setTarget(TARGETS.some((t) => t.id === state.target) ? state.target : 'nsx')
       setPolicyName(state.policyName)
       setNsxProject(state.nsxProject ?? '')
       setNsxCategory(normalizeNsxCategory(state.nsxCategory))
-      setShared('Shared rules loaded.')
+      const restored = state.sections ?? emptySections()
+      setMembership(restored.membership)
+      setSectionTitles(restored.titles)
+      setNsxSeparatePolicies(restored.nsxSeparatePolicies)
+      setDataWarnings(state.warnings ?? [])
+      setShared('Shared workspace loaded.')
     })
   }, [])
 
@@ -146,8 +135,14 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify({ rules, target, policyName, nsxProject, nsxCategory }))
-  }, [rules, target, policyName, nsxProject, nsxCategory])
+    if (!initial.canSave) return
+    try {
+      localStorage.setItem(WORKSPACE_KEY, serializeWorkspace({ rules, target, policyName, nsxProject, nsxCategory, sections: { membership, titles: sectionTitles, nsxSeparatePolicies } }))
+    } catch {
+      const timer = window.setTimeout(() => setDataWarnings(['Workspace could not be saved in this browser. Export JSON or copy a share link before leaving.']), 0)
+      return () => window.clearTimeout(timer)
+    }
+  }, [rules, target, policyName, nsxProject, nsxCategory, membership, sectionTitles, nsxSeparatePolicies, initial.canSave])
 
   const current = TARGETS.find((t) => t.id === target)!
   const routeros = current.platform === 'mikrotik'
@@ -199,7 +194,7 @@ export default function App() {
     setTimeout(() => setCopied(false), 1400)
   }
   const share = async () => {
-    const url = await shareUrl({ rules, target, policyName, nsxProject, nsxCategory })
+    const url = await shareUrl({ rules, target, policyName, nsxProject, nsxCategory, sections })
     await navigator.clipboard.writeText(url)
     setShared(url.length > 2000 ? `Link copied (${url.length} chars — very long, some apps may truncate it).` : 'Share link copied ✓')
     setTimeout(() => setShared(null), 3500)
@@ -212,11 +207,12 @@ export default function App() {
     URL.revokeObjectURL(url)
   }
   const clearAll = () => {
-    if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}? Export or share first if you want to keep them.`)) {
+    if (window.confirm(`Remove all ${rules.length} rule${rules.length === 1 ? '' : 's'}${sectioned ? ' and section metadata' : ''}? Export or share first if you want to keep them.`)) {
       setRules([])
       setTemplateNotice(null)
       setMembership({})
       setSectionTitles({ unsectioned: 'Unsectioned' })
+      setNsxSeparatePolicies(false)
     }
   }
   const saveFile = (text: string, filename: string, type = 'text/plain') => {
@@ -228,11 +224,29 @@ export default function App() {
   const exportData = () =>
     dataFormat === 'csv'
       ? saveFile(toCsv(rules, extras), `firewall-rules-${target}.csv`, 'text/csv')
-      : saveFile(toJson(rules, { target, policyName }), `firewall-rules-${target}.json`, 'application/json')
+      : saveFile(toJson(rules, { target, policyName, nsxProject, nsxCategory, sections }), `firewall-rules-${target}.json`, 'application/json')
   const doImport = () => {
-    const result = dataFormat === 'csv' ? { rules: parseCsv(csv, extras), error: undefined as string | undefined } : parseJson(csv, target)
-    if (!result.rules.length) return setImportError(result.error ?? 'No rules found.')
-    setRules((rs) => appendToUnsectioned(rs, result.rules, membership))
+    const result: JsonImport = dataFormat === 'csv' ? { rules: parseCsv(csv, extras) } : parseJson(csv, target)
+    if (result.error || (!result.rules.length && !result.sections)) return setImportError(result.error ?? 'No rules found.')
+    let warnings = result.warnings ?? []
+    if (result.sections) {
+      const merged = appendSectionedRules(rules, sections, result.rules, result.sections)
+      if (merged.error) return setImportError(merged.error)
+      setRules(merged.rules)
+      setMembership(merged.sections.membership)
+      setSectionTitles(merged.sections.titles)
+      setNsxSeparatePolicies(merged.sections.nsxSeparatePolicies)
+      warnings = [...warnings, ...merged.warnings]
+    } else {
+      setRules((rs) => appendToUnsectioned(rs, result.rules, membership))
+    }
+    if (!rules.length && result.meta) {
+      if (TARGETS.some((candidate) => candidate.id === result.meta?.target)) setTarget(result.meta.target!)
+      if (result.meta.policyName !== undefined) setPolicyName(result.meta.policyName)
+      setNsxProject(result.meta.nsxProject ?? '')
+      setNsxCategory(normalizeNsxCategory(result.meta.nsxCategory))
+    }
+    setDataWarnings(warnings)
     setCsv('')
     setImportError(null)
     setImportOpen(false)
@@ -321,11 +335,13 @@ export default function App() {
           <div className="panel-head">
             <div className="actions">
               <button className="ghost action-button import-action" onClick={() => setImportOpen(true)}><ButtonIcon name="import" />Import</button>
-              <button className="ghost action-button export-action" onClick={exportData} disabled={rules.length === 0}><ButtonIcon name="export" />Export</button>
+              <button className="ghost action-button export-action" onClick={exportData} disabled={rules.length === 0 && !(dataFormat === 'json' && sectioned)}><ButtonIcon name="export" />Export</button>
               {formatSwitch}
-              <button className="ghost action-button clear-action" onClick={clearAll} disabled={rules.length === 0}><ButtonIcon name="clear" />Clear all</button>
+              <button className="ghost action-button clear-action" onClick={clearAll} disabled={rules.length === 0 && !sectioned}><ButtonIcon name="clear" />Clear all</button>
             </div>
           </div>
+          {dataFormat === 'csv' && sectioned && <p className="notice">{CSV_SECTION_NOTICE}</p>}
+          {dataWarnings.length > 0 && <div className="notice" role="status">{dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
 
           <datalist id="endpoints">
             {Object.keys(ENDPOINTS).map((e) => <option key={e} value={e} />)}
@@ -495,6 +511,7 @@ export default function App() {
                   The columns follow the selected target: <code>{csvColumns(extras).join(', ')}</code>. Switch platform or format to get that target's columns. Paste straight from a spreadsheet (tab-separated works too).
                   If the first row is a header, columns are matched by name in any order and unknown columns are ignored; without a header they are read in the order above.
                 </p>
+                <p className="notice">{CSV_SECTION_NOTICE}</p>
                 <p>
                   <b>service</b> is a well-known service (e.g. <code>HTTPS (TCP 443)</code>) or a protocol (<code>TCP</code>, <code>UDP</code>, <code>ICMP</code>, <code>ANY</code>) with <b>ports</b> filled in.
                   <b> source</b> / <b>destination</b> accept <code>Any</code>, a well-known endpoint, or comma-separated CIDRs. <b>action</b> is ALLOW, DROP or REJECT; <b>direction</b> is Inbound or Outbound; switches such as <b>logging</b> take true/false.
@@ -502,7 +519,7 @@ export default function App() {
               </>
             ) : (
               <p>
-                JSON keeps every rule field, including the per-target options and the enabled switch, regardless of which target is selected. Paste an exported file or a bare array of rules; unknown keys are ignored and invalid values fall back to defaults.
+                JSON keeps every rule field, section names/membership and NSX policy layout. Exported workspaces restore target and policy settings when imported into an empty workspace. Section-bearing JSON appends an intact ordered block to existing rules; overlapping section IDs are rejected. Older exports and bare arrays enter Unsectioned. Invalid section metadata is ignored with a warning; rule order is not sorted.
               </p>
             )}
             <textarea value={csv} onChange={(e) => pasteInto(e.target.value)} placeholder={example} />
