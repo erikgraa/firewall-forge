@@ -478,7 +478,7 @@ export default function App() {
         </p>
         <p>Generated code is a starting point, provided as is without warranty — review it against your provider / API versions and test before applying to production.</p>
         <p>
-          <a href="https://github.com/erikgraa/firewall-forge" target="_blank" rel="noreferrer">Source on GitHub</a>
+          Firewall Forge v{__APP_VERSION__} · <a href="https://github.com/erikgraa/firewall-forge" target="_blank" rel="noreferrer">Source on GitHub</a>
         </p>
       </footer>
 

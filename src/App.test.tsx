@@ -168,6 +168,17 @@ describe.each(['mikrotik', 'mikrotik-tf'])('MikroTik editor (%s)', (target) => {
   })
 })
 
+describe('app version', () => {
+  it('displays the shared build version in the footer without removing disclaimers or the source link', () => {
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })
+    const footer = renderToStaticMarkup(<App />).split('<footer>')[1].split('</footer>')[0]
+    expect(footer).toContain(`Firewall Forge v${__APP_VERSION__} ·`)
+    expect(footer).toContain('Community-driven, unofficial tool.')
+    expect(footer).toContain('Generated code is a starting point')
+    expect(footer).toContain('href="https://github.com/erikgraa/firewall-forge" target="_blank" rel="noreferrer">Source on GitHub</a>')
+  })
+})
+
 describe('home logo', () => {
   it.each([
     ['light', 'icon-light.svg'],

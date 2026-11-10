@@ -4,10 +4,15 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ## [Unreleased]
 
-<!-- Add changes here as they are made; do not invent entries for earlier releases. -->
+<!-- Add post-0.8.0 changes here; do not invent entries for earlier releases. -->
+
+## [0.8.0] - 2026-11-10
+
+Initial pre-1.0 version baseline. It collects the existing browser-only multi-target rule editor/generators, import/export/share support, and the merged improvements below. No earlier numbered releases are implied.
 
 ### Added
 
+- A package/lockfile version baseline of 0.8.0, a footer version derived from the package at build time, and a README badge linked to published GitHub releases.
 - Static Open Graph and Twitter-card metadata with canonical production URLs and a generic PNG preview based on the existing app logo, for link previews without JavaScript execution or user-policy content.
 - One-click SSH, Web and DNS starter templates with decorative icons: one SSH rule, one HTTPS rule or two DNS rules, disabled until the user edits/reviews addresses and enables them. New workspaces start empty while existing saved rules remain intact.
 - Experimental Flat / Sections organization with Unsectioned, named collapsible sections, section-local additions, drag/drop and accessible Move and up/down controls. Moves change actual rule order; section metadata remains temporary and is excluded from saved/exported/shared data.
@@ -32,6 +37,23 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 - Dismiss the latest SSH/Web/DNS addition notice after changing one of its new rules' source or destination in Rules or Topology, without enabling the rules.
 - Firewalld Ansible policy setup and policy-rule tasks now check state before adding configuration, making repeat runs idempotent.
 
+### Validation and limitations
+
+- Automated generator/UI tests and production type-check/build validation are available; these do not establish complete live firewall validation for every target/output. Review [docs/SOURCES.md](docs/SOURCES.md) for product/tool versions and remaining parser/schema/live-test gaps.
+- Disabled-rule support and deployment lifecycle vary by target. Omission does not disable deployed rules; review managed-resource deletions and append-only duplicates before applying.
+- Section metadata is still temporary and absent from saved/imported/exported/shared rule data. The topology is a rule-intent preview, not a live network or packet simulator.
+- Target-aware default-deny remains deferred. No full-hardening-policy or production-readiness guarantee is implied by this version baseline.
+
 ## Release process
 
-There are no published releases yet. When preparing a release, use a `vMAJOR.MINOR.PATCH` Git tag following Semantic Versioning, move the completed entries from **Unreleased** into a dated version section, and start a fresh **Unreleased** section. Keep entries concise and user-facing, grouped under **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, or **Security** as appropriate. Record only changes supported by the merged work; do not add historical entries retroactively.
+Use `vMAJOR.MINOR.PATCH` tags following Semantic Versioning. Before 1.0, minor releases may include incompatible changes; use patches for compatible fixes and document breaking behavior and migrations. The initial baseline is 0.8.0, not a claim of earlier published releases. A **Pending release** heading is preparation only; use the actual publication date once approved.
+
+1. Obtain explicit approval to commit/push/merge and to publish the tag/GitHub release. Preparing a package version or release notes alone does not authorize publication.
+2. Use `npm version <version> --no-git-tag-version` to update `package.json` and both root lockfile version fields without prematurely creating a tag. Vite injects that package version into the app footer; there is no separate UI version to edit.
+3. Finalize the matching changelog section with the publication date and accurate notes/limitations, retaining **Unreleased** for subsequent work. Run `npm test`, `npm run lint`, and `npm run build`; review the package/lock diff, footer and generated artifacts.
+4. Commit the version/footer/changelog changes, open and merge the release PR, and verify CI/deployment. Fetch main and identify the exact merged release commit. Check `git show <release-commit>:package.json` and `git show <release-commit>:package-lock.json` for the matching version and verify that commit contains the release notes and footer injection. **Never tag the earlier 0.0.0 tree**, or an unrelated/newer commit by accident.
+5. From the verified merged release commit, create the annotated tag: `git tag -a v0.8.0 <release-commit> -m "Firewall Forge v0.8.0"` (substitute the release version for later releases). Verify `git rev-parse v0.8.0^{commit}` equals that commit, then push only the intended tag with `git push origin v0.8.0`. Do not move an existing published tag.
+6. Publish the GitHub release from that existing tag with `gh release create v0.8.0 --verify-tag --title "Firewall Forge v0.8.0" --notes-file <reviewed-release-notes-file>`. Use the corresponding changelog section, validation evidence and limitations as the reviewed notes; do not rely solely on auto-generated commit lists. `--verify-tag` prevents implicit tag creation on an unchecked commit.
+7. Verify the tag/release version and commit, production footer, and release badge. Tags/releases do not trigger the current Pages/container workflows; main pushes deploy Pages and publish containers, and scheduled provider refreshes can rebuild the same app version. The latest-release badge updates only after GitHub publication and cache refresh; a package bump or tag alone is insufficient.
+
+Keep changelog entries concise and user-facing, grouped under **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, or **Security** as appropriate. Record only supported changes; do not add historical release sections retroactively.
