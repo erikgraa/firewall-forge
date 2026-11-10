@@ -126,6 +126,7 @@ describe('flat-first section prototype', () => {
     mode.sections = true
     const { markup } = render()
     expect(markup.match(/class="rule-add-footer"/g)).toHaveLength(4)
+    expect(markup.match(/class="ghost action-button add-action"/g)).toHaveLength(4)
     expect(markup).toContain('aria-label="Add rule to Unsectioned"')
     expect(markup).toContain('aria-label="Add rule to Empty named section"')
     expect(markup).toContain('aria-label="Add rule to Application"')

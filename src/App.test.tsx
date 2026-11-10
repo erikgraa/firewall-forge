@@ -108,7 +108,7 @@ describe('rule creation placement', () => {
     expect(actions).not.toContain('Add rule')
     const rulesView = markup.split('id="rules-view"')[1]
     expect(rulesView.indexOf('data-table-rule-id=')).toBeLessThan(rulesView.indexOf('class="rule-add-footer"'))
-    expect(rulesView).toContain('Add rule</button>')
+    expect(rulesView).toContain('class="ghost action-button add-action">Add rule</button>')
   })
 })
 
