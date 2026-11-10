@@ -198,6 +198,11 @@ describe('container workflow contract', () => {
     expect(workflow).toContain("needs.image.result == 'success'")
   })
 
+  it('includes the workflow fixture in the Docker context so build-time tests can read it', () => {
+    const ignore = readFileSync(new URL('../.dockerignore', import.meta.url), 'utf8')
+    expect(ignore).toContain('!.github/workflows/container.yml')
+  })
+
   it('filters both main pushes and pull requests to actual build and policy inputs', () => {
     expect(workflow).toContain('paths: &container-paths')
     expect(workflow).toContain('paths: *container-paths')
