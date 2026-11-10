@@ -5,23 +5,51 @@ on:
     - cron: '30 2 * * *' # nightly: rebuild with the latest provider versions
   push:
     branches: [main]
+    paths: &container-paths
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'index.html'
+      - 'vite.config.*'
+      - 'tsconfig*.json'
+      - 'Dockerfile'
+      - 'nginx.conf'
+      - '.dockerignore'
+      - '.github/workflows/container.yml'
   pull_request:
-    paths: [Dockerfile, nginx.conf, .dockerignore, .github/workflows/container.yml]
+    paths: *container-paths
   workflow_dispatch:
+    inputs:
+      retention_dry_run:
+        description: 'Only preview retention (no build, push or deletion)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
-  group: container-${{ github.event_name }}-${{ github.ref }}
+  group: container-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   image:
+    if: github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.retention_dry_run)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -- scripts/container-retention.test.mjs
+      - run: npm run lint
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         if: github.event_name != 'pull_request'
@@ -47,3 +75,38 @@ jobs:
           no-cache: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  retention:
+    needs: image
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      (needs.image.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && inputs.retention_dry_run))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -- scripts/container-retention.test.mjs
+      - name: Resolve package owner type
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner_type=$(gh api users/${{ github.repository_owner }} --jq .type)
+          echo "PACKAGE_OWNER_TYPE=$owner_type" >> "$GITHUB_ENV"
+      - name: Retain 30 days of dated and SHA container versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RETENTION_DRY_RUN: ${{ inputs.retention_dry_run || false }}
+        run: |
+          if [ "$RETENTION_DRY_RUN" = true ]; then
+            node scripts/container-retention.mjs
+          else
+            node scripts/container-retention.mjs --apply
+          fi

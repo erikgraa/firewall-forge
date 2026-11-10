@@ -2,4 +2,6 @@ node_modules
 dist
 .git
 .github
+# Needed by the workflow contract tests run inside the Docker build.
+!.github/workflows/container.yml
 *.log
