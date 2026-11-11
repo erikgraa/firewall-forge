@@ -316,7 +316,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <a className="logo-link" href="https://firewall-forge.graa.dev" aria-label="Firewall Forge home">
+        <a className="logo-link" href="https://firewallforge.graa.dev" aria-label="Firewall Forge home">
           <img src={`${import.meta.env.BASE_URL}${theme === 'light' ? 'icon-light.svg' : 'icon.svg'}`} alt="" className="logo" />
         </a>
         <div>
