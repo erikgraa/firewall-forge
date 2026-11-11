@@ -1,7 +1,7 @@
 import type { Rule, TargetId } from './model'
 
 const nativeDisabledTargets: ReadonlySet<TargetId> = new Set([
-  'nsx', 'nsx-ps', 'nsx-sdk', 'windows', 'fmc',
+  'nsx', 'nsx-ps', 'nsx-sdk', 'windows', 'fmc', 'fmc-ansible',
   'panos', 'panos-1x', 'panos-ansible', 'mikrotik', 'mikrotik-tf',
 ])
 

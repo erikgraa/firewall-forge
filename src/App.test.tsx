@@ -46,6 +46,21 @@ describe('persisted section workspace', () => {
   })
 })
 
+describe('Cisco FMC Ansible UI', () => {
+  it('restores the Ansible format with zones, disabled rules and accurate deployment warnings', () => {
+    const stored = serializeWorkspace({ rules: [{ ...blankRule(), name: 'fmc-disabled', enabled: false, srcZone: 'inside', dstZone: 'outside' }], target: 'fmc-ansible', policyName: 'dedicated' })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('data-platform="fmc" aria-pressed="true"')
+    expect(markup).toContain('aria-pressed="true" data-format="Ansible"')
+    expect(markup).toContain('From zone')
+    expect(markup).toContain('To zone')
+    expect(markup).toContain('enabled</span>: false')
+    expect(markup).toContain('No device assignment or deployment is performed')
+    expect(markup).not.toContain('disabled rule omitted')
+  })
+})
+
 describe('policy workspace', () => {
   it('starts expanded with accessible tabs and a clean slate for new users', () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })

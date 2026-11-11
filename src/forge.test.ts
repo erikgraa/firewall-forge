@@ -378,6 +378,110 @@ describe('MikroTik Terraform', () => {
   })
 })
 
+describe('Cisco FMC Ansible', () => {
+  it('uses the native collection with external credentials, explicit domain and no deployment', () => {
+    const code = out('fmc-ansible')
+    expect(code).toContain('cisco.fmcansible == 1.1.1')
+    expect(code).toContain('connection: ansible.netcommon.httpapi')
+    expect(code).toContain('ansible_httpapi_validate_certs: true')
+    expect(code).toContain('fmc_domain_uuid is defined')
+    expect(code).toContain('operation: createAccessPolicy')
+    expect(code).toContain('action: BLOCK')
+    expect(code).toContain('operation: createMultipleAccessRule')
+    expect(code).not.toMatch(/operation: (upsert|update|delete|createDeployment)|ansible_password:/)
+    expect(code).not.toMatch(/ansible.builtin.(uri|shell|command):/)
+    expect(out('fmc-ansible', [])).toBe('')
+  })
+
+  it('checks the entire existing rule prefix and fields before writing, then verifies order', () => {
+    const code = out('fmc-ansible')
+    const write = code.indexOf('operation: createAccessPolicy')
+    for (const text of ['forge_existing_policy.description', "default('') == 'BLOCK'", 'forge_existing_rules | length <=', 'forge_existing_rules | map(attribute=', 'item.0.action == item.1.action', 'sourceNetworks differs', 'destinationPorts differs']) expect(code.indexOf(text)).toBeLessThan(write)
+    expect(code).toContain('filters:\n          type: AccessRule')
+    expect(code).toContain('expanded: true')
+    expect(code).toContain('forge_desired_rules[forge_existing_rules | length:]')
+    expect(code).toContain('section: default')
+    expect(code).not.toContain('bulk: true')
+    expect(code.lastIndexOf('Require exact resulting rule order')).toBeGreaterThan(write)
+    expect(code).toContain(".get('section', '') == 'Default'")
+    expect(code).toContain('item.0.metadata.ruleIndex > 0')
+    const finalPolicy = code.slice(code.indexOf('Verify final policy ownership'), code.indexOf('Verify the complete resulting order'))
+    expect(code.indexOf('Verify final policy ownership')).toBeGreaterThan(write)
+    expect(finalPolicy).toContain('forge_existing_policy.name == forge_policy_name')
+    expect(finalPolicy).toContain('Do not assign or deploy')
+    expect(finalPolicy).not.toContain('when:')
+    expect(code).toContain('Reject conflicting existing rule settings after writes')
+  })
+
+  it('preserves actions, network literals, zones, named networks, ports, logging and notes', () => {
+    const rules = [
+      rule({ name: 'allow', source: '10.0.0.1,10.1.0.0/16', destination: 'corp-net', srcZone: 'inside', dstZone: 'outside', service: 'Custom', protocol: 'TCP', ports: '443,8080-8090', logging: true, notes: 'Audit note' }),
+      rule({ name: 'drop', action: 'DROP', service: 'Custom', protocol: 'ANY', ports: '', enabled: false }),
+      rule({ name: 'reject', action: 'REJECT', service: 'Custom', protocol: 'ICMP', ports: '' }),
+    ]
+    const code = out('fmc-ansible', rules)
+    for (const text of ['action: !unsafe "ALLOW"', 'action: !unsafe "BLOCK"', 'action: !unsafe "BLOCK_RESET"', 'type: !unsafe "Host"', 'type: !unsafe "Network"', 'value: !unsafe "10.1.0.0/16"', 'operation: getAllNetworkObject', 'operation: getAllSecurityZone', 'port: !unsafe "8080-8090"', 'logEnd: true', 'sendEventsToFMC: true', 'description: !unsafe "Audit note"', 'type: !unsafe "ICMPv4PortLiteral"']) expect(code).toContain(text)
+    expect(code.indexOf('name: !unsafe "allow"')).toBeLessThan(code.indexOf('name: !unsafe "drop"'))
+    expect(code.indexOf('name: !unsafe "drop"')).toBeLessThan(code.indexOf('name: !unsafe "reject"'))
+  })
+
+  it.each(['ALLOW', 'DROP', 'REJECT'] as const)('uses action-aware FMC connection logging for %s', (action) => {
+    const code = out('fmc-ansible', [rule({ action, logging: true })])
+    expect(code).toContain(`logBegin: ${action !== 'ALLOW'}`)
+    expect(code).toContain(`logEnd: ${action === 'ALLOW'}`)
+    expect(code).toContain('sendEventsToFMC: true')
+    const quiet = out('fmc-ansible', [rule({ action, logging: false })])
+    expect(quiet).toContain('logBegin: false')
+    expect(quiet).toContain('logEnd: false')
+    expect(quiet).toContain('sendEventsToFMC: false')
+    expect(code.split('\n').some((line) => /[ \t]+$/.test(line))).toBe(false)
+  })
+
+  it('represents protocol-only ports, retains all-disabled rules and isolates input from Jinja', () => {
+    const name = '{{ lookup("env", "SECRET") }}\nquoted: value'
+    const code = out('fmc-ansible', [rule({ name, service: 'Custom', protocol: 'UDP', ports: '', enabled: false, notes: name, destination: '{{ unsafe_name }}' })], { policyName: name })
+    expect(code).toContain('enabled: false')
+    expect(code).toContain('protocol: !unsafe "17"')
+    expect(code).not.toContain('port: !unsafe')
+    expect(code).toContain(`forge_policy_name: !unsafe ${JSON.stringify(name)}`)
+    expect(code).toContain(`name: !unsafe ${JSON.stringify(name)}`)
+    expect(code).toContain('name: !unsafe "{{ unsafe_name }}"')
+    expect(code).not.toContain('disabled rule omitted')
+  })
+
+  it.each([
+    { service: 'Custom', protocol: 'ANY', ports: '443' },
+    { service: 'Custom', protocol: 'ICMP', ports: '8' },
+    { service: 'Custom', ports: '0' },
+    { service: 'Custom', ports: '100-20' },
+    { source: '2001:db8::1' }, { source: '10.0.0.256' }, { priority: '10' },
+    { source: '' }, { destination: '  ' }, { source: '10.0.0.1,,10.0.0.2' },
+    { srcZone: ',' }, { dstZone: 'inside,' }, { service: 'Custom', ports: ',' },
+    { source: Array(201).fill('10.0.0.1').join(',') },
+    { scope: '/infra/domains/default/groups/g' }, { program: 'app.exe' },
+    { zone: 'public' }, { profile: 'Private' }, { permanent: false }, { routerosChain: 'forward' },
+    { ports: '22' },
+  ] as Partial<Rule>[])('blocks unsupported intent without a partial configuration: %j', (over) => {
+    const rules = [rule(over)]
+    expect(validate(rules, 'fmc-ansible').some((issue) => issue.level === 'error')).toBe(true)
+    expect(out('fmc-ansible', rules)).toContain('BLOCKED:')
+    expect(out('fmc-ansible', rules)).not.toContain('operation: create')
+  })
+
+  it('keeps digit-prefixed object names and discloses the Internet preset meaning', () => {
+    expect(out('fmc-ansible', [rule({ source: '10-corp' })])).toContain('name: !unsafe "10-corp"')
+    expect(validate([rule({ source: 'Internet' })], 'fmc-ansible')).toContainEqual(expect.objectContaining({ level: 'warn', message: expect.stringContaining('including private IPv4') }))
+  })
+
+  it('roundtrips the format, zones, notes and native disabled state through JSON, CSV and share links', async () => {
+    const rules = [rule({ enabled: false, srcZone: 'inside', dstZone: 'outside', notes: 'retained' })]
+    expect(parseJson(toJson(rules, { target: 'fmc-ansible', policyName: 'dedicated' }))).toMatchObject({ meta: { target: 'fmc-ansible' }, rules: [{ enabled: false, srcZone: 'inside', dstZone: 'outside', notes: 'retained' }] })
+    expect(parseCsv(toCsv(rules, EXTRA_COLUMNS['fmc-ansible']), EXTRA_COLUMNS['fmc-ansible'])[0]).toMatchObject({ enabled: false, srcZone: 'inside', dstZone: 'outside', notes: 'retained' })
+    expect(await decodeState(await encodeState({ rules, target: 'fmc-ansible', policyName: 'dedicated' }))).toMatchObject({ target: 'fmc-ansible', rules: [{ enabled: false, srcZone: 'inside', dstZone: 'outside' }] })
+    expect(validate([{ ...rules[0], direction: 'Outbound' }], 'fmc-ansible')).toContainEqual(expect.objectContaining({ level: 'warn', message: expect.stringContaining('Direction is not used') }))
+  })
+})
+
 describe('native disabled-rule output', () => {
   const formats = [
     { id: 'nsx', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
@@ -385,6 +489,7 @@ describe('native disabled-rule output', () => {
     { id: 'nsx-sdk', off: /-Disabled \$true/g, on: /-Disabled \$false/g },
     { id: 'windows', off: /-Enabled False/g, on: /-Enabled True/g },
     { id: 'fmc', off: /enabled = false/g, on: /enabled = true/g },
+    { id: 'fmc-ansible', off: /enabled: false/g, on: /enabled: true/g },
     { id: 'panos', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
     { id: 'panos-1x', off: /disabled\s*= true/g, on: /disabled\s*= false/g },
     { id: 'panos-ansible', off: /disabled: true/g, on: /disabled: false/g },

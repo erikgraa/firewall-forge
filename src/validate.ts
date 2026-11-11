@@ -1,5 +1,6 @@
 import { ENDPOINTS, SERVICES, baseTarget } from './model'
 import { routerosIssues } from './routeros'
+import { fmcAnsibleErrors } from './fmcAnsible'
 import { supportsDisabledRules } from './disabledRules'
 import type { Rule, TargetId } from './model'
 
@@ -48,6 +49,11 @@ export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
   const firstDrop = enabled.findIndex((r) => r.action !== 'ALLOW' && r.source === 'Any' && r.destination === 'Any' && !r.ports.trim())
   if (firstDrop >= 0 && firstDrop < enabled.length - 1)
     issues.push({ level: 'warn', message: `"${enabled[firstDrop].name}" is a catch-all drop but is not the last enabled rule — later enabled rules never match` })
+  if (target === 'fmc-ansible') {
+    issues.push(...fmcAnsibleErrors(rules).map((message): Issue => ({ level: 'error', message })))
+    if (rules.some((rule) => rule.source.trim() === 'Internet' || rule.destination.trim() === 'Internet')) issues.push({ level: 'warn', message: 'FMC Ansible maps the Internet preset to 0.0.0.0/0, including private IPv4 addresses; it does not exclude RFC1918 networks. Use explicit networks and zones for the intended boundary.' })
+    issues.push({ level: 'warn', message: 'FMC Ansible configures a dedicated BLOCK-default policy, retaining disabled rules. Existing rules must be an identical ordered prefix; edits, removals, reordering, inheritance or advanced settings require manual review. No device assignment or deployment is performed. IPv4 literals/ICMPv4 only; named addresses must be existing Network objects. Live FMC validation is outstanding.' })
+  }
   if (target) issues.push(...targetWarnings(supportsDisabledRules(target) ? rules : enabled, target))
   return issues
 }
