@@ -4,7 +4,11 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ## [Unreleased]
 
-<!-- Add post-0.8.0 changes here; do not invent entries for earlier releases. -->
+<!-- Add changes after v0.8.5 here; do not invent entries for earlier releases. -->
+
+## [0.8.5] - 2026-11-11
+
+Compatible improvements since v0.8.0. Versions 0.8.1–0.8.4 were not published; this release does not imply intermediate releases.
 
 ### Added
 
@@ -15,6 +19,16 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 - Replaced obsolete temporary-section notices with accurate persistence guidance. Windows section warnings now appear only for populated named sections and clarify that sections are editor organization, not native Windows policy objects.
 - CSV remains rule-only, with relevant section-loss disclosures; JSON/share links preserve the sectioned workspace. Flat view remains the default and presentation preferences are not persisted.
+- Give Add rule buttons a distinct, theme-aware amber accent in Flat, Sections and Topology views, retaining existing placement, behavior and keyboard-focus indicators.
+- Move production links, canonical metadata and Open Graph/Twitter image URLs to `https://firewallforge.graa.dev/`, with documented administrator-managed Pages/DNS/HTTPS requirements.
+- Bump the package and lockfile to 0.8.5; the existing build-time package version injection supplies the footer.
+
+### Validation and limitations
+
+- This remains an unofficial, pre-1.0 testing tool. Automated tests and production builds do not establish live firewall validation or production readiness; review [docs/SOURCES.md](docs/SOURCES.md) and generated configuration before deployment.
+- Sections remain experimental. CSV and older rule-only formats cannot preserve section metadata; legacy formats remain readable. Section moves change evaluation order, and NSX separate-policy deployment/resource identity changes require review.
+- This release contains only merged changes since v0.8.0; guarded Cisco FMC Ansible support in still-open PR #45 is not included.
+- No target-aware default-deny or full-hardening-policy guarantee is added. Old-host HTTPS redirects and social-preview cache refreshes remain outside the release workflow.
 
 ## [0.8.0] - 2026-11-10
 
