@@ -714,18 +714,37 @@ describe('generators (behaviour)', () => {
     const before = JSON.stringify(rules)
     const text = out(id, rules)
     expect(text).not.toContain('BLOCKED:')
-    const start = id === 'azfw-ps' ? "@'\n" : "<<'FIREWALL_FORGE_JSON'\n"
-    const end = id === 'azfw-ps' ? "\n'@" : '\nFIREWALL_FORGE_JSON'
-    const payload = JSON.parse(text.slice(text.indexOf(start) + start.length, text.indexOf(end)))
-    const collections = payload.properties.ruleCollections
-    expect(collections.map((collection: { action: { type: string }; priority: number; name: string }) => [collection.action.type, collection.priority, collection.name])).toEqual([
-      ['Allow', 1000, 'generated-1-allow'], ['Deny', 1100, 'generated-2-deny'], ['Allow', 1200, 'generated-3-allow'],
-    ])
-    expect(collections[0].rules.map((r: { name: string }) => r.name)).toEqual(['first', 'second', 'fqdn'])
-    expect(collections[0].rules[0]).toMatchObject({ sourceAddresses: ['10.0.0.0/8'], destinationAddresses: ['10.1.1.1'], destinationPorts: ['80', '5985-5986'], description: rules[0].notes })
-    expect(collections[0].rules[2]).toMatchObject({ sourceAddresses: ['*'], destinationFqdns: ['1.login.microsoftonline.com', 'xn--bcher-kva.xn--p1ai'] })
-    expect(collections[0].rules[2]).not.toHaveProperty('destinationAddresses')
-    expect(collections[0].rules[1]).toMatchObject({ sourceAddresses: ['*'], destinationAddresses: ['*'], ipProtocols: ['UDP'], destinationPorts: ['53'] })
+    if (id === 'azfw-cli') {
+      const start = "<<'FIREWALL_FORGE_JSON'\n"
+      const payload = JSON.parse(text.slice(text.indexOf(start) + start.length, text.indexOf('\nFIREWALL_FORGE_JSON')))
+      const collections = payload.properties.ruleCollections
+      expect(collections.map((collection: { action: { type: string }; priority: number; name: string }) => [collection.action.type, collection.priority, collection.name])).toEqual([
+        ['Allow', 1000, 'generated-1-allow'], ['Deny', 1100, 'generated-2-deny'], ['Allow', 1200, 'generated-3-allow'],
+      ])
+      expect(collections[0].rules.map((r: { name: string }) => r.name)).toEqual(['first', 'second', 'fqdn'])
+      expect(collections[0].rules[0]).toMatchObject({ sourceAddresses: ['10.0.0.0/8'], destinationAddresses: ['10.1.1.1'], destinationPorts: ['80', '5985-5986'], description: rules[0].notes })
+      expect(collections[0].rules[2]).toMatchObject({ sourceAddresses: ['*'], destinationFqdns: ['1.login.microsoftonline.com', 'xn--bcher-kva.xn--p1ai'] })
+      expect(collections[0].rules[2]).not.toHaveProperty('destinationAddresses')
+      expect(collections[0].rules[1]).toMatchObject({ sourceAddresses: ['*'], destinationAddresses: ['*'], ipProtocols: ['UDP'], destinationPorts: ['53'] })
+    } else {
+      expect(text).not.toMatch(/Convert(?:From|To)-Json|ruleCollections|ruleType|@'/)
+      expect([...text.matchAll(/New-AzFirewallPolicyFilterRuleCollection -Name '([^']+)' -Priority (\d+) -ActionType '([^']+)'/g)].map((match) => [match[3], Number(match[2]), match[1]])).toEqual([
+        ['Allow', 1000, 'generated-1-allow'], ['Deny', 1100, 'generated-2-deny'], ['Allow', 1200, 'generated-3-allow'],
+      ])
+      const parameters = [...text.matchAll(/\$parameters = @\{\n([\s\S]*?)\n    \}/g)].map((match) => match[1])
+      expect(parameters.map((value) => /Name = '([^']+)'/.exec(value)?.[1])).toEqual(['first', 'second', 'fqdn', 'deny', 'last'])
+      expect(parameters[0]).toContain("SourceAddress = @('10.0.0.0/8')")
+      expect(parameters[0]).toContain("DestinationAddress = @('10.1.1.1')")
+      expect(parameters[0]).toContain("DestinationPort = @('80', '5985-5986')")
+      expect(parameters[0]).toContain(`Description = '${rules[0].notes}'`)
+      expect(parameters[1]).toContain("Protocol = @('UDP')")
+      expect(parameters[1]).toContain("SourceAddress = @('*')")
+      expect(parameters[1]).toContain("DestinationAddress = @('*')")
+      expect(parameters[1]).toContain("DestinationPort = @('53')")
+      expect(parameters[2]).toContain("DestinationFqdn = @('1.login.microsoftonline.com', 'xn--bcher-kva.xn--p1ai')")
+      expect(parameters[2]).not.toContain('DestinationAddress')
+      expect(text.match(/New-AzFirewallPolicyNetworkRule @parameters/g)).toHaveLength(5)
+    }
     expect(text).toContain('disabled rule omitted')
     expect(JSON.stringify(rules)).toBe(before)
     expect(validate(rules.filter((r) => r.enabled), id as 'azfw-ps' | 'azfw-cli').filter((issue) => issue.level === 'error')).toEqual([])
@@ -754,6 +773,11 @@ describe('generators (behaviour)', () => {
     const ps = out('azfw-ps', rules)
     expect(ps.indexOf('if (-not $Apply)')).toBeLessThan(ps.indexOf('Get-AzContext'))
     expect(ps).toContain('SupportsShouldProcess')
+    expect(ps).toContain('Write-Output $buildCollections.ToString()')
+    expect(ps).toContain('$collections = @(& $buildCollections)')
+    expect(ps.indexOf('return\n}')).toBeLessThan(ps.indexOf('Import-Module'))
+    expect(ps.indexOf('$PSCmdlet.ShouldProcess')).toBeLessThan(ps.indexOf('$collections = @(& $buildCollections)'))
+    expect(ps).not.toMatch(/Convert(?:From|To)-Json/)
     expect(ps).toContain('$policy.DnsSettings.EnableProxy')
     expect(ps).toContain('-DefaultProfile $context -Confirm:$false')
     expect(ps).not.toContain('New-AzFirewallPolicy -')
@@ -766,7 +790,7 @@ describe('generators (behaviour)', () => {
     for (const id of ['azfw-ps', 'azfw-cli']) {
       expect(out(id, [])).not.toContain('az rest --method put')
       expect(out(id, [rule({ enabled: false })])).toContain('no create/update operation')
-      expect(out(id, [rule({ protocol: 'ANY', ports: '' })])).toContain('"Any"')
+      expect(out(id, [rule({ protocol: 'ANY', ports: '' })])).toContain(id === 'azfw-ps' ? "Protocol = @('Any')" : '"Any"')
     }
   })
 
@@ -779,7 +803,10 @@ describe('generators (behaviour)', () => {
     const json = text.slice(text.indexOf(start) + start.length, text.indexOf('\nFIREWALL_FORGE_JSON'))
     expect(JSON.parse(json).properties.ruleCollections[0].rules[0].description).toBe(notes)
     expect(out('azfw-ps', rules)).toContain('serialization replaces apostrophes')
-    expect(out('azfw-ps', [rule({ notes: 'safe\n"quoted" $()' })])).not.toContain('BLOCKED:')
+    const psNotes = '  safe\n"quoted" $() `literal` \\path  '
+    const ps = out('azfw-ps', [rule({ notes: psNotes })])
+    expect(ps).not.toContain('BLOCKED:')
+    expect(ps).toContain(`Description = '${psNotes}'`)
   })
 
   it('Azure collection names are bounded and unique across all four formats', () => {

@@ -186,89 +186,41 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $groupName = 'generated'
-$data = @'
-{
-  "properties": {
-    "priority": 1000,
-    "ruleCollections": [
-      {
-        "name": "generated-1-allow",
-        "priority": 1000,
-        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
-        "action": {
-          "type": "Allow"
-        },
-        "rules": [
-          {
-            "name": "web-in",
-            "ruleType": "NetworkRule",
-            "ipProtocols": [
-              "TCP"
-            ],
-            "sourceAddresses": [
-              "10.0.0.0/8",
-              "172.16.0.0/12",
-              "192.168.0.0/16"
-            ],
-            "destinationAddresses": [
-              "10.10.10.0/24"
-            ],
-            "destinationPorts": [
-              "443"
-            ]
-          },
-          {
-            "name": "dns-out",
-            "ruleType": "NetworkRule",
-            "ipProtocols": [
-              "UDP"
-            ],
-            "sourceAddresses": [
-              "*"
-            ],
-            "destinationAddresses": [
-              "1.1.1.1",
-              "8.8.8.8"
-            ],
-            "destinationPorts": [
-              "53"
-            ]
-          }
-        ]
-      },
-      {
-        "name": "generated-2-deny",
-        "priority": 1100,
-        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
-        "action": {
-          "type": "Deny"
-        },
-        "rules": [
-          {
-            "name": "deny-rest",
-            "ruleType": "NetworkRule",
-            "ipProtocols": [
-              "Any"
-            ],
-            "sourceAddresses": [
-              "*"
-            ],
-            "destinationAddresses": [
-              "*"
-            ],
-            "destinationPorts": [
-              "*"
-            ]
-          }
-        ]
-      }
-    ]
-  }
+$buildCollections = {
+  $networkRules = @(
+    $parameters = @{
+      Name = 'web-in'
+      Protocol = @('TCP')
+      SourceAddress = @('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
+      DestinationPort = @('443')
+      DestinationAddress = @('10.10.10.0/24')
+    }
+    New-AzFirewallPolicyNetworkRule @parameters
+    $parameters = @{
+      Name = 'dns-out'
+      Protocol = @('UDP')
+      SourceAddress = @('*')
+      DestinationPort = @('53')
+      DestinationAddress = @('1.1.1.1', '8.8.8.8')
+    }
+    New-AzFirewallPolicyNetworkRule @parameters
+  )
+  New-AzFirewallPolicyFilterRuleCollection -Name 'generated-1-allow' -Priority 1000 -ActionType 'Allow' -Rule $networkRules
+  $networkRules = @(
+    $parameters = @{
+      Name = 'deny-rest'
+      Protocol = @('Any')
+      SourceAddress = @('*')
+      DestinationPort = @('*')
+      DestinationAddress = @('*')
+    }
+    New-AzFirewallPolicyNetworkRule @parameters
+  )
+  New-AzFirewallPolicyFilterRuleCollection -Name 'generated-2-deny' -Priority 1100 -ActionType 'Deny' -Rule $networkRules
 }
-'@ | ConvertFrom-Json
-$data.properties.priority = $GroupPriority
 if (-not $Apply) {
-  $data | ConvertTo-Json -Depth 100
+  Write-Output "Group: $groupName; priority: $GroupPriority"
+  Write-Output $buildCollections.ToString()
   Write-Warning 'Review only: no Azure calls. -Apply creates or REPLACES the entire named group; back up existing rules first.'
   return
 }
@@ -282,25 +234,11 @@ if (-not $context -or $context.Subscription.Id -ne $SubscriptionId) {
   throw 'Sign in and select the requested subscription outside this script before applying.'
 }
 $policy = Get-AzFirewallPolicy -Name $FirewallPolicyName -ResourceGroupName $ResourceGroupName -DefaultProfile $context
-$hasFqdns = @($data.properties.ruleCollections.rules | Where-Object { $_.destinationFqdns }).Count -gt 0
+$hasFqdns = $false
 if ($hasFqdns -and -not $policy.DnsSettings.EnableProxy) {
   throw 'Destination FQDN network rules require DNS proxy enabled on the policy. Configure DNS separately before applying.'
 }
-$collections = @(foreach ($collection in $data.properties.ruleCollections) {
-  $networkRules = @(foreach ($rule in $collection.rules) {
-    $parameters = @{
-      Name = $rule.name
-      Protocol = [string[]]$rule.ipProtocols
-      SourceAddress = [string[]]$rule.sourceAddresses
-      DestinationPort = [string[]]$rule.destinationPorts
-    }
-    if ($rule.destinationAddresses) { $parameters.DestinationAddress = [string[]]$rule.destinationAddresses }
-    if ($rule.destinationFqdns) { $parameters.DestinationFqdn = [string[]]$rule.destinationFqdns }
-    if ($rule.description) { $parameters.Description = $rule.description }
-    New-AzFirewallPolicyNetworkRule @parameters
-  })
-  New-AzFirewallPolicyFilterRuleCollection -Name $collection.name -Priority $collection.priority -ActionType $collection.action.type -Rule $networkRules
-})
+$collections = @(& $buildCollections)
 # The native cmdlet uses CreateOrUpdate: rerunning converges this group, not the whole policy.
 New-AzFirewallPolicyRuleCollectionGroup -Name $groupName -Priority $GroupPriority -ResourceGroupName $ResourceGroupName -FirewallPolicyName $FirewallPolicyName -RuleCollection $collections -DefaultProfile $context -Confirm:$false
 "

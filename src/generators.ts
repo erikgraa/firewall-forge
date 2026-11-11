@@ -1235,7 +1235,31 @@ const azfwScriptData = (rules: Rule[], policyName: string) => ({
 
 const azfwPowerShell = (rules: Rule[], { policyName }: Options) => {
   if (!active(rules).length) return '# No enabled Azure network rules; no create/update operation generated.\n'
-  const data = azfwScriptData(rules, policyName)
+  const plan = azfwPlan(rules, policyName, true)
+  const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
+  const array = (values: string[]) => `@(${values.map(quote).join(', ')})`
+  const hasFqdns = plan.some((collection) => collection.rules.some((rule) => rule.dstFqdns.length))
+  const buildCollections = plan.map((collection) => {
+    const networkRules = collection.rules.map((rule) => {
+      const parameters = [
+        `Name = ${quote(rule.name)}`,
+        `Protocol = ${array(rule.protocols)}`,
+        `SourceAddress = ${array(rule.src)}`,
+        `DestinationPort = ${array(rule.ports)}`,
+        ...(rule.dstAddrs.length ? [`DestinationAddress = ${array(rule.dstAddrs)}`] : []),
+        ...(rule.dstFqdns.length ? [`DestinationFqdn = ${array(rule.dstFqdns)}`] : []),
+        ...(rule.description ? [`Description = ${quote(rule.description)}`] : []),
+      ]
+      return `    $parameters = @{
+${parameters.map((parameter) => `      ${parameter}`).join('\n')}
+    }
+    New-AzFirewallPolicyNetworkRule @parameters`
+    })
+    return `  $networkRules = @(
+${networkRules.join('\n')}
+  )
+  New-AzFirewallPolicyFilterRuleCollection -Name ${quote(collection.name)} -Priority ${collection.priority} -ActionType ${quote(collection.action)} -Rule $networkRules`
+  }).join('\n')
   return `# ${AZURE_SCRIPT_WARNING}
 # PowerShell 7+, Az.Network 7.14.0+; sign in with Connect-AzAccount outside this script.
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
@@ -1248,12 +1272,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $groupName = '${slug(policyName).slice(0, 80).replace(/-$/, '')}'
-$data = @'
-${JSON.stringify(data, null, 2)}
-'@ | ConvertFrom-Json
-$data.properties.priority = $GroupPriority
+$buildCollections = {
+${buildCollections}
+}
 if (-not $Apply) {
-  $data | ConvertTo-Json -Depth 100
+  Write-Output "Group: $groupName; priority: $GroupPriority"
+  Write-Output $buildCollections.ToString()
   Write-Warning 'Review only: no Azure calls. -Apply creates or REPLACES the entire named group; back up existing rules first.'
   return
 }
@@ -1267,25 +1291,11 @@ if (-not $context -or $context.Subscription.Id -ne $SubscriptionId) {
   throw 'Sign in and select the requested subscription outside this script before applying.'
 }
 $policy = Get-AzFirewallPolicy -Name $FirewallPolicyName -ResourceGroupName $ResourceGroupName -DefaultProfile $context
-$hasFqdns = @($data.properties.ruleCollections.rules | Where-Object { $_.destinationFqdns }).Count -gt 0
+$hasFqdns = ${hasFqdns ? '$true' : '$false'}
 if ($hasFqdns -and -not $policy.DnsSettings.EnableProxy) {
   throw 'Destination FQDN network rules require DNS proxy enabled on the policy. Configure DNS separately before applying.'
 }
-$collections = @(foreach ($collection in $data.properties.ruleCollections) {
-  $networkRules = @(foreach ($rule in $collection.rules) {
-    $parameters = @{
-      Name = $rule.name
-      Protocol = [string[]]$rule.ipProtocols
-      SourceAddress = [string[]]$rule.sourceAddresses
-      DestinationPort = [string[]]$rule.destinationPorts
-    }
-    if ($rule.destinationAddresses) { $parameters.DestinationAddress = [string[]]$rule.destinationAddresses }
-    if ($rule.destinationFqdns) { $parameters.DestinationFqdn = [string[]]$rule.destinationFqdns }
-    if ($rule.description) { $parameters.Description = $rule.description }
-    New-AzFirewallPolicyNetworkRule @parameters
-  })
-  New-AzFirewallPolicyFilterRuleCollection -Name $collection.name -Priority $collection.priority -ActionType $collection.action.type -Rule $networkRules
-})
+$collections = @(& $buildCollections)
 # The native cmdlet uses CreateOrUpdate: rerunning converges this group, not the whole policy.
 New-AzFirewallPolicyRuleCollectionGroup -Name $groupName -Priority $GroupPriority -ResourceGroupName $ResourceGroupName -FirewallPolicyName $FirewallPolicyName -RuleCollection $collections -DefaultProfile $context -Confirm:$false
 `
