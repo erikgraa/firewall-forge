@@ -181,7 +181,7 @@ Preview changes take effect after deployment, and Discord/other services may cac
 
 ## 📋 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and the release checklist. The current release is **0.8.5** (release tag **v0.8.5**), following the initial **0.8.0** baseline; versions 0.8.1–0.8.4 were not published. The footer displays the app version injected by Vite from `package.json` in development, tests and production; update package/lock versions together with `npm version <version> --no-git-tag-version`, rather than editing a second footer constant. Restart the dev server after a version change.
+See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and the release checklist. The current release is **0.9.0** (release tag **v0.9.0**), adding Azure Firewall Policy PowerShell and Azure CLI outputs after **0.8.5** and the initial **0.8.0** baseline; versions 0.8.1–0.8.4 were not published. The footer displays the app version injected by Vite from `package.json` in development, tests and production; update package/lock versions together with `npm version <version> --no-git-tag-version`, rather than editing a second footer constant. Restart the dev server after a version change.
 
 The README badge tracks the latest **published GitHub release**, not an unpublished package version or tag alone; badge caches may delay newly published releases. Before 1.0, minor releases may introduce incompatible changes; use patch releases for compatible fixes and document breaking changes/migrations explicitly. Version 0.8.0 is a project maturity baseline, not evidence of eight previous releases or complete live validation across targets. See [docs/SOURCES.md](docs/SOURCES.md) for verification gaps.
 

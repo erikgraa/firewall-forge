@@ -4,7 +4,11 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 ## [Unreleased]
 
-<!-- Add changes after v0.8.5 here; do not invent entries for earlier releases. -->
+<!-- Add changes after v0.9.0 here; do not invent entries for earlier releases. -->
+
+## [0.9.0] - 2026-11-11
+
+Azure Firewall Policy script outputs. Generated configuration remains a reviewable starting point, not a live-validated deployment. Full-group replacement and the intentional Terraform/Bicep collection-name changes require deployment review.
 
 ### Added
 
