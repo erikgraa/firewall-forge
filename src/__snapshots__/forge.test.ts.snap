@@ -15,7 +15,7 @@ resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024
     ruleCollections: [
       {
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-        name: '--'
+        name: 'generated-1-allow'
         priority: 1000
         action: {
           type: 'Allow'
@@ -41,7 +41,7 @@ resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024
       }
       {
         ruleCollectionType: 'FirewallPolicyFilterRuleCollection'
-        name: '--'
+        name: 'generated-2-deny'
         priority: 1100
         action: {
           type: 'Deny'
@@ -60,6 +60,249 @@ resource ruleGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024
     ]
   }
 }
+"
+`;
+
+exports[`generators (snapshots) > azfw-cli output is stable 1`] = `
+"#!/usr/bin/env bash
+# These scripts create or replace ONE rule collection group in an existing Firewall Policy, removing all previous collections/rules in that group (including application/DNAT rules). Default mode is local review only; applying requires explicit consent. List order sets collection priorities from 1000 in steps of 100; group priority defaults to 1000. Direction is informational: matching is source → destination, with stateful return traffic. Parent policies and earlier groups may take precedence; DNAT is evaluated before network rules, then application rules. No firewall, routing, DNS proxy or diagnostic settings are created. Exact destination FQDNs require DNS proxy and match resolved IPs, not HTTP host/SNI.
+# Bash + Azure CLI core az rest (checked with CLI 2.91.0). No firewall extension required.
+# Sign in with az login outside this script. API 2024-05-01 matches the Bicep output.
+set -euo pipefail
+if [[ $# -gt 1 || ( $# -eq 1 && $1 != '--apply' ) ]]; then
+  printf '%s\\n' 'Usage: bash azure-firewall.sh [--apply]' >&2
+  exit 1
+fi
+body_file=$(mktemp)
+trap 'rm -f -- "$body_file"' EXIT
+cat > "$body_file" <<'FIREWALL_FORGE_JSON'
+{
+  "properties": {
+    "priority": 1000,
+    "ruleCollections": [
+      {
+        "name": "generated-1-allow",
+        "priority": 1000,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "web-in",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "10.0.0.0/8",
+              "172.16.0.0/12",
+              "192.168.0.0/16"
+            ],
+            "destinationAddresses": [
+              "10.10.10.0/24"
+            ],
+            "destinationPorts": [
+              "443"
+            ]
+          },
+          {
+            "name": "dns-out",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "*"
+            ],
+            "destinationAddresses": [
+              "1.1.1.1",
+              "8.8.8.8"
+            ],
+            "destinationPorts": [
+              "53"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "generated-2-deny",
+        "priority": 1100,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Deny"
+        },
+        "rules": [
+          {
+            "name": "deny-rest",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "Any"
+            ],
+            "sourceAddresses": [
+              "*"
+            ],
+            "destinationAddresses": [
+              "*"
+            ],
+            "destinationPorts": [
+              "*"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+FIREWALL_FORGE_JSON
+if [[ \${1:-} != '--apply' ]]; then
+  cat "$body_file"
+  printf '%s\\n' 'Review only: no Azure calls. --apply creates or REPLACES the entire named group; back up existing rules first.' >&2
+  exit 0
+fi
+: "\${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
+: "\${AZURE_RESOURCE_GROUP:?Set AZURE_RESOURCE_GROUP}"
+: "\${AZURE_FIREWALL_POLICY:?Set AZURE_FIREWALL_POLICY}"
+# Restrict path inputs to safe ASCII resource names; no URL fragments or query injection.
+[[ $AZURE_SUBSCRIPTION_ID =~ ^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$ ]] || { printf '%s\\n' 'Invalid subscription UUID' >&2; exit 1; }
+[[ $AZURE_RESOURCE_GROUP =~ ^[a-zA-Z0-9_.()-]+$ && $AZURE_FIREWALL_POLICY =~ ^[a-zA-Z0-9_.-]+$ ]] || { printf '%s\\n' 'Use ASCII resource names without spaces or URL delimiters' >&2; exit 1; }
+policy_id="/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.Network/firewallPolicies/$AZURE_FIREWALL_POLICY"
+# One PUT replaces this group, including any previous application/DNAT collections.
+# The response may be provisioning; verify provisioningState is Succeeded before relying on rules.
+az rest --method put --url "$policy_id/ruleCollectionGroups/generated?api-version=2024-05-01" --headers 'Content-Type=application/json' --body "@$body_file"
+"
+`;
+
+exports[`generators (snapshots) > azfw-ps output is stable 1`] = `
+"# These scripts create or replace ONE rule collection group in an existing Firewall Policy, removing all previous collections/rules in that group (including application/DNAT rules). Default mode is local review only; applying requires explicit consent. List order sets collection priorities from 1000 in steps of 100; group priority defaults to 1000. Direction is informational: matching is source → destination, with stateful return traffic. Parent policies and earlier groups may take precedence; DNAT is evaluated before network rules, then application rules. No firewall, routing, DNS proxy or diagnostic settings are created. Exact destination FQDNs require DNS proxy and match resolved IPs, not HTTP host/SNI.
+# PowerShell 7+, Az.Network 7.14.0+; sign in with Connect-AzAccount outside this script.
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+param(
+  [string]$SubscriptionId,
+  [string]$ResourceGroupName,
+  [string]$FirewallPolicyName,
+  [ValidateRange(100, 65000)][int]$GroupPriority = 1000,
+  [switch]$Apply
+)
+$ErrorActionPreference = 'Stop'
+$groupName = 'generated'
+$data = @'
+{
+  "properties": {
+    "priority": 1000,
+    "ruleCollections": [
+      {
+        "name": "generated-1-allow",
+        "priority": 1000,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "web-in",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "10.0.0.0/8",
+              "172.16.0.0/12",
+              "192.168.0.0/16"
+            ],
+            "destinationAddresses": [
+              "10.10.10.0/24"
+            ],
+            "destinationPorts": [
+              "443"
+            ]
+          },
+          {
+            "name": "dns-out",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "*"
+            ],
+            "destinationAddresses": [
+              "1.1.1.1",
+              "8.8.8.8"
+            ],
+            "destinationPorts": [
+              "53"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "generated-2-deny",
+        "priority": 1100,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Deny"
+        },
+        "rules": [
+          {
+            "name": "deny-rest",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "Any"
+            ],
+            "sourceAddresses": [
+              "*"
+            ],
+            "destinationAddresses": [
+              "*"
+            ],
+            "destinationPorts": [
+              "*"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+'@ | ConvertFrom-Json
+$data.properties.priority = $GroupPriority
+if (-not $Apply) {
+  $data | ConvertTo-Json -Depth 100
+  Write-Warning 'Review only: no Azure calls. -Apply creates or REPLACES the entire named group; back up existing rules first.'
+  return
+}
+if (-not $SubscriptionId -or -not $ResourceGroupName -or -not $FirewallPolicyName) {
+  throw 'Applying requires SubscriptionId, ResourceGroupName and FirewallPolicyName.'
+}
+if (-not $PSCmdlet.ShouldProcess("$ResourceGroupName/$FirewallPolicyName/$groupName", 'Create or REPLACE all collections/rules in this group')) { return }
+Import-Module Az.Network -MinimumVersion 7.14.0
+$context = Get-AzContext -ErrorAction Stop
+if (-not $context -or $context.Subscription.Id -ne $SubscriptionId) {
+  throw 'Sign in and select the requested subscription outside this script before applying.'
+}
+$policy = Get-AzFirewallPolicy -Name $FirewallPolicyName -ResourceGroupName $ResourceGroupName -DefaultProfile $context
+$hasFqdns = @($data.properties.ruleCollections.rules | Where-Object { $_.destinationFqdns }).Count -gt 0
+if ($hasFqdns -and -not $policy.DnsSettings.EnableProxy) {
+  throw 'Destination FQDN network rules require DNS proxy enabled on the policy. Configure DNS separately before applying.'
+}
+$collections = @(foreach ($collection in $data.properties.ruleCollections) {
+  $networkRules = @(foreach ($rule in $collection.rules) {
+    $parameters = @{
+      Name = $rule.name
+      Protocol = [string[]]$rule.ipProtocols
+      SourceAddress = [string[]]$rule.sourceAddresses
+      DestinationPort = [string[]]$rule.destinationPorts
+    }
+    if ($rule.destinationAddresses) { $parameters.DestinationAddress = [string[]]$rule.destinationAddresses }
+    if ($rule.destinationFqdns) { $parameters.DestinationFqdn = [string[]]$rule.destinationFqdns }
+    if ($rule.description) { $parameters.Description = $rule.description }
+    New-AzFirewallPolicyNetworkRule @parameters
+  })
+  New-AzFirewallPolicyFilterRuleCollection -Name $collection.name -Priority $collection.priority -ActionType $collection.action.type -Rule $networkRules
+})
+# The native cmdlet uses CreateOrUpdate: rerunning converges this group, not the whole policy.
+New-AzFirewallPolicyRuleCollectionGroup -Name $groupName -Priority $GroupPriority -ResourceGroupName $ResourceGroupName -FirewallPolicyName $FirewallPolicyName -RuleCollection $collections -DefaultProfile $context -Confirm:$false
 "
 `;
 
@@ -85,7 +328,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "generated" {
   priority           = 1000
 
   network_rule_collection {
-    name     = "--"
+    name     = "generated-1-allow"
     priority = 1000
     action   = "Allow"
     rule {
@@ -105,7 +348,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "generated" {
   }
 
   network_rule_collection {
-    name     = "--"
+    name     = "generated-2-deny"
     priority = 1100
     action   = "Deny"
     rule {

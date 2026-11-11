@@ -6,6 +6,15 @@ Notable user-facing changes are recorded here. Entries follow the [Keep a Change
 
 <!-- Add changes after v0.8.5 here; do not invent entries for earlier releases. -->
 
+### Added
+
+- Azure Firewall Policy PowerShell (Az.Network) and Azure CLI (REST/Bash) network-rule outputs with local review-only defaults, explicit apply consent, DNS-proxy checks and documented full-group replacement scope. Enhancement [#49](https://github.com/erikgraa/firewall-forge/issues/49).
+- Strict validation for unsupported Azure script mappings, with no executable output for invalid or all-disabled policies. Credentials/execution stay outside the browser; no live Azure deployment was performed.
+
+### Fixed
+
+- Azure Firewall shared collection planning now emits valid, unique names instead of `--`, and retains explicit wildcard addresses. Terraform/Bicep collection names change intentionally; review existing deployments before applying.
+
 ## [0.8.5] - 2026-11-11
 
 Compatible improvements since v0.8.0. Versions 0.8.1–0.8.4 were not published; this release does not imply intermediate releases.

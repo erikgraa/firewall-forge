@@ -158,7 +158,7 @@ export default function App() {
   const example = dataFormat === 'csv' ? csvExample(extras) : jsonExample({ target, policyName })
   const ext = dataFormat
   const rowStyle = { gridTemplateColumns: gridCols, minWidth: `${1004 + extras.length * 110}px` }
-  const issues = useMemo(() => rules.length ? validate(rules, target) : [], [rules, target])
+  const issues = useMemo(() => rules.length ? validate(target === 'azfw-ps' || target === 'azfw-cli' ? rules.filter((rule) => rule.enabled) : rules, target) : [], [rules, target])
   const errors = issues.filter((i) => i.level === 'error')
   const output = useMemo(() => generateGroupedOutput(rules, target, { policyName, nsxProject, nsxCategory }, sectionRuns(rules, membership), sectionTitles, nsxSeparatePolicies), [rules, target, policyName, nsxProject, nsxCategory, membership, sectionTitles, nsxSeparatePolicies])
   const code = output.code

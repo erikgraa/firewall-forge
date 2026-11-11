@@ -702,6 +702,98 @@ describe('generators (behaviour)', () => {
     expect(bicep).toContain("ruleType: 'NetworkRule'")
   })
 
+  it.each(['azfw-ps', 'azfw-cli'])('%s preserves action runs, addresses, services and disabled omission without mutations', (id) => {
+    const rules = [
+      rule({ name: 'first', source: '10.0.0.0/8', destination: '10.1.1.1', service: 'Custom', ports: '80,5985-5986', notes: 'review $variables and "quotes" safely' }),
+      rule({ name: 'second', source: '*', destination: '*', protocol: 'UDP', ports: '53' }),
+      rule({ name: 'fqdn', destination: '1.login.microsoftonline.com,xn--bcher-kva.xn--p1ai' }),
+      rule({ name: 'disabled', enabled: false, action: 'REJECT', source: 'corp' }),
+      rule({ name: 'deny', action: 'DROP', source: '10.0.0.0/8', destination: '10.2.2.2' }),
+      rule({ name: 'last', source: '10.0.0.0/8', destination: '10.3.3.3' }),
+    ]
+    const before = JSON.stringify(rules)
+    const text = out(id, rules)
+    expect(text).not.toContain('BLOCKED:')
+    const start = id === 'azfw-ps' ? "@'\n" : "<<'FIREWALL_FORGE_JSON'\n"
+    const end = id === 'azfw-ps' ? "\n'@" : '\nFIREWALL_FORGE_JSON'
+    const payload = JSON.parse(text.slice(text.indexOf(start) + start.length, text.indexOf(end)))
+    const collections = payload.properties.ruleCollections
+    expect(collections.map((collection: { action: { type: string }; priority: number; name: string }) => [collection.action.type, collection.priority, collection.name])).toEqual([
+      ['Allow', 1000, 'generated-1-allow'], ['Deny', 1100, 'generated-2-deny'], ['Allow', 1200, 'generated-3-allow'],
+    ])
+    expect(collections[0].rules.map((r: { name: string }) => r.name)).toEqual(['first', 'second', 'fqdn'])
+    expect(collections[0].rules[0]).toMatchObject({ sourceAddresses: ['10.0.0.0/8'], destinationAddresses: ['10.1.1.1'], destinationPorts: ['80', '5985-5986'], description: rules[0].notes })
+    expect(collections[0].rules[2]).toMatchObject({ sourceAddresses: ['*'], destinationFqdns: ['1.login.microsoftonline.com', 'xn--bcher-kva.xn--p1ai'] })
+    expect(collections[0].rules[2]).not.toHaveProperty('destinationAddresses')
+    expect(collections[0].rules[1]).toMatchObject({ sourceAddresses: ['*'], destinationAddresses: ['*'], ipProtocols: ['UDP'], destinationPorts: ['53'] })
+    expect(text).toContain('disabled rule omitted')
+    expect(JSON.stringify(rules)).toBe(before)
+    expect(validate(rules.filter((r) => r.enabled), id as 'azfw-ps' | 'azfw-cli').filter((issue) => issue.level === 'error')).toEqual([])
+  })
+
+  it.each(['azfw-ps', 'azfw-cli'])('%s blocks unsupported mappings before emitting commands', (id) => {
+    for (const over of [
+      { action: 'REJECT' as const }, { source: 'corp' }, { source: 'host.example.com', destination: 'host.example.com' },
+      { destination: '10.0.0.1,example.com' }, { destination: '*.example.com' }, { destination: '10.0.0.1/33' }, { source: '999.0.0.1' }, { source: '2001:db8::1' },
+      { logging: true }, { priority: '100' }, { program: 'app.exe' }, { scope: '/infra/group' }, { zone: 'public' },
+      { permanent: false }, { profile: 'Domain' as const }, { notes: 'x'.repeat(501) }, { name: 'bad\nname' },
+      { protocol: 'ANY' as const, ports: '443' }, { protocol: 'ICMP' as const, ports: '80' },
+      { destination: 'example.com', protocol: 'ICMP' as const, ports: '' }, { ports: '0' }, { ports: '443-80' },
+    ]) {
+      const rules = [rule({ source: '10.0.0.1', destination: '10.0.0.2', ...over })]
+      expect(validate(rules, id as 'azfw-ps' | 'azfw-cli').some((issue) => issue.level === 'error')).toBe(true)
+      const text = out(id, rules)
+      expect(text).toContain('BLOCKED:')
+      expect(text).not.toContain('New-AzFirewallPolicy')
+      expect(text).not.toContain('az rest --method put')
+    }
+  })
+
+  it('Azure scripts have explicit review/apply boundaries and DNS checks, with no policy provisioning', () => {
+    const rules = [rule({ destination: 'example.com' })]
+    const ps = out('azfw-ps', rules)
+    expect(ps.indexOf('if (-not $Apply)')).toBeLessThan(ps.indexOf('Get-AzContext'))
+    expect(ps).toContain('SupportsShouldProcess')
+    expect(ps).toContain('$policy.DnsSettings.EnableProxy')
+    expect(ps).toContain('-DefaultProfile $context -Confirm:$false')
+    expect(ps).not.toContain('New-AzFirewallPolicy -')
+    const cli = out('azfw-cli', rules)
+    expect(cli.indexOf("if [[ ${1:-} != '--apply' ]]")).toBeLessThan(cli.indexOf('dns_proxy=$(az rest'))
+    expect(cli).toContain('properties.dnsSettings.enableProxy')
+    expect(cli).toContain('api-version=2024-05-01')
+    expect(cli).toContain('--body "@$body_file"')
+    expect(cli).toContain('trap')
+    for (const id of ['azfw-ps', 'azfw-cli']) {
+      expect(out(id, [])).not.toContain('az rest --method put')
+      expect(out(id, [rule({ enabled: false })])).toContain('no create/update operation')
+      expect(out(id, [rule({ protocol: 'ANY', ports: '' })])).toContain('"Any"')
+    }
+  })
+
+  it('Azure CLI safely encodes multiline descriptions while Az.Network apostrophe limitations are explicit', () => {
+    const notes = "  it's $() `quoted`\n'@\nFIREWALL_FORGE_JSON\n\"double quotes\"  "
+    const rules = [rule({ notes })]
+    const text = out('azfw-cli', rules)
+    expect(text).not.toContain('BLOCKED:')
+    const start = "<<'FIREWALL_FORGE_JSON'\n"
+    const json = text.slice(text.indexOf(start) + start.length, text.indexOf('\nFIREWALL_FORGE_JSON'))
+    expect(JSON.parse(json).properties.ruleCollections[0].rules[0].description).toBe(notes)
+    expect(out('azfw-ps', rules)).toContain('serialization replaces apostrophes')
+    expect(out('azfw-ps', [rule({ notes: 'safe\n"quoted" $()' })])).not.toContain('BLOCKED:')
+  })
+
+  it('Azure collection names are bounded and unique across all four formats', () => {
+    const rules = [rule({ name: 'allow' }), rule({ name: 'deny', action: 'DROP' })]
+    for (const id of ['azfw-tf', 'azfw-bicep', 'azfw-ps', 'azfw-cli']) {
+      const text = out(id, rules, { policyName: 'Long-policy-'.repeat(20) })
+      expect(text).not.toMatch(/name\s*=\s*["']--["']/)
+      expect(text).toContain('-1-allow')
+      expect(text).toContain('-2-deny')
+    }
+    const excessive = Array.from({ length: 642 }, (_, i) => rule({ name: `r${i}`, action: i % 2 ? 'DROP' : 'ALLOW' }))
+    expect(out('azfw-cli', excessive)).toContain('priorities would exceed')
+  })
+
   it('bicep outputs escape single quotes', () => {
     expect(out('azfw-bicep', [rule({ name: "it's", source: '10.0.0.0/8', destination: '10.1.1.1', notes: "a'b" })])).toContain("name: 'it\\'s'")
     expect(out('azl-bicep', [rule({ name: "it's", notes: "a'b" })])).toContain("description: 'a\\'b'")

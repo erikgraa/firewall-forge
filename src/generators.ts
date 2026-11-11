@@ -1,7 +1,8 @@
 import { ENDPOINTS, SERVICES } from './model'
 import { requiredProviders } from './providers'
 import { blockedDisabledOutput, disabledRuleWarning } from './disabledRules'
-import { disabledOutputErrors } from './validate'
+import { disabledOutputErrors, validate } from './validate'
+import { azureFqdn, AZURE_SCRIPT_WARNING } from './azureFirewall'
 import { mikrotik, mikrotikTerraform } from './routeros'
 import { DEFAULT_NSX_CATEGORY } from './model'
 import type { Rule, TargetId } from './model'
@@ -1084,7 +1085,7 @@ interface AzfwCollection {
 }
 
 // Azure Firewall applies one action per rule collection, so consecutive rules with the same action share a collection.
-const azfwPlan = (rules: Rule[], policyName: string): AzfwCollection[] => {
+const azfwPlan = (rules: Rule[], policyName: string, preserveNotes = false): AzfwCollection[] => {
   const collections: AzfwCollection[] = []
   for (const r of active(rules)) {
     const action = r.action === 'ALLOW' ? 'Allow' : 'Deny'
@@ -1095,8 +1096,9 @@ const azfwPlan = (rules: Rule[], policyName: string): AzfwCollection[] => {
     }
     const src = prefixes(r.source, 'nsx')
     const dst = prefixes(r.destination, 'nsx')
-    const dstFqdns = dst.filter((x) => !isIp(x) && looksLikeFqdn(x))
-    const bad = [...src, ...dst].find((x) => !isIp(x) && !(dst.includes(x) && looksLikeFqdn(x)))
+    const fqdn = preserveNotes ? azureFqdn : looksLikeFqdn
+    const dstFqdns = dst.filter((x) => !isIp(x) && fqdn(x))
+    const bad = [...src, ...dst].find((x) => x !== '*' && !isIp(x) && !(dst.includes(x) && fqdn(x)))
     const ports = splitPorts(r)
     if (bad) {
       col.todos.push(`${r.name}: "${bad}" is not an IP/CIDR or FQDN — use an IP group (sourceIpGroups / destinationIpGroups)`)
@@ -1106,17 +1108,17 @@ const azfwPlan = (rules: Rule[], policyName: string): AzfwCollection[] => {
       name: r.name,
       protocols: [{ TCP: 'TCP', UDP: 'UDP', ICMP: 'ICMP', ANY: 'Any' }[r.protocol]],
       src: src.length ? src : ['*'],
-      dstAddrs: dst.filter(isIp).length || dstFqdns.length ? dst.filter(isIp) : ['*'],
+      dstAddrs: dst.filter((x) => x === '*' || isIp(x)).length || dstFqdns.length ? dst.filter((x) => x === '*' || isIp(x)) : ['*'],
       dstFqdns,
       ports: ports.length ? ports : ['*'],
-      description: r.notes.trim(),
+      description: preserveNotes ? r.notes : r.notes.trim(),
     })
   }
   const kept = collections.filter((c) => c.rules.length)
   const dropped = collections.filter((c) => !c.rules.length && c.todos.length)
   kept.forEach((c, i) => {
     c.priority = 1000 + i * 100
-    c.name = `--`
+    c.name = `${slug(policyName).slice(0, 60).replace(/-$/, '')}-${i + 1}-${c.action.toLowerCase()}`
   })
   if (dropped.length && kept.length) kept[0].todos.push(...dropped.flatMap((c) => c.todos))
   return kept
@@ -1209,6 +1211,124 @@ ${cols.join('\n')}
 `
 }
 
+const azfwScriptData = (rules: Rule[], policyName: string) => ({
+  properties: {
+    priority: 1000,
+    ruleCollections: azfwPlan(rules, policyName, true).map((collection) => ({
+      name: collection.name,
+      priority: collection.priority,
+      ruleCollectionType: 'FirewallPolicyFilterRuleCollection',
+      action: { type: collection.action },
+      rules: collection.rules.map((rule) => ({
+        name: rule.name,
+        ruleType: 'NetworkRule',
+        ...(rule.description ? { description: rule.description } : {}),
+        ipProtocols: rule.protocols,
+        sourceAddresses: rule.src,
+        ...(rule.dstAddrs.length ? { destinationAddresses: rule.dstAddrs } : {}),
+        ...(rule.dstFqdns.length ? { destinationFqdns: rule.dstFqdns } : {}),
+        destinationPorts: rule.ports,
+      })),
+    })),
+  },
+})
+
+const azfwPowerShell = (rules: Rule[], { policyName }: Options) => {
+  if (!active(rules).length) return '# No enabled Azure network rules; no create/update operation generated.\n'
+  const data = azfwScriptData(rules, policyName)
+  return `# ${AZURE_SCRIPT_WARNING}
+# PowerShell 7+, Az.Network 7.14.0+; sign in with Connect-AzAccount outside this script.
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+param(
+  [string]$SubscriptionId,
+  [string]$ResourceGroupName,
+  [string]$FirewallPolicyName,
+  [ValidateRange(100, 65000)][int]$GroupPriority = 1000,
+  [switch]$Apply
+)
+$ErrorActionPreference = 'Stop'
+$groupName = '${slug(policyName).slice(0, 80).replace(/-$/, '')}'
+$data = @'
+${JSON.stringify(data, null, 2)}
+'@ | ConvertFrom-Json
+$data.properties.priority = $GroupPriority
+if (-not $Apply) {
+  $data | ConvertTo-Json -Depth 100
+  Write-Warning 'Review only: no Azure calls. -Apply creates or REPLACES the entire named group; back up existing rules first.'
+  return
+}
+if (-not $SubscriptionId -or -not $ResourceGroupName -or -not $FirewallPolicyName) {
+  throw 'Applying requires SubscriptionId, ResourceGroupName and FirewallPolicyName.'
+}
+if (-not $PSCmdlet.ShouldProcess("$ResourceGroupName/$FirewallPolicyName/$groupName", 'Create or REPLACE all collections/rules in this group')) { return }
+Import-Module Az.Network -MinimumVersion 7.14.0
+$context = Get-AzContext -ErrorAction Stop
+if (-not $context -or $context.Subscription.Id -ne $SubscriptionId) {
+  throw 'Sign in and select the requested subscription outside this script before applying.'
+}
+$policy = Get-AzFirewallPolicy -Name $FirewallPolicyName -ResourceGroupName $ResourceGroupName -DefaultProfile $context
+$hasFqdns = @($data.properties.ruleCollections.rules | Where-Object { $_.destinationFqdns }).Count -gt 0
+if ($hasFqdns -and -not $policy.DnsSettings.EnableProxy) {
+  throw 'Destination FQDN network rules require DNS proxy enabled on the policy. Configure DNS separately before applying.'
+}
+$collections = @(foreach ($collection in $data.properties.ruleCollections) {
+  $networkRules = @(foreach ($rule in $collection.rules) {
+    $parameters = @{
+      Name = $rule.name
+      Protocol = [string[]]$rule.ipProtocols
+      SourceAddress = [string[]]$rule.sourceAddresses
+      DestinationPort = [string[]]$rule.destinationPorts
+    }
+    if ($rule.destinationAddresses) { $parameters.DestinationAddress = [string[]]$rule.destinationAddresses }
+    if ($rule.destinationFqdns) { $parameters.DestinationFqdn = [string[]]$rule.destinationFqdns }
+    if ($rule.description) { $parameters.Description = $rule.description }
+    New-AzFirewallPolicyNetworkRule @parameters
+  })
+  New-AzFirewallPolicyFilterRuleCollection -Name $collection.name -Priority $collection.priority -ActionType $collection.action.type -Rule $networkRules
+})
+# The native cmdlet uses CreateOrUpdate: rerunning converges this group, not the whole policy.
+New-AzFirewallPolicyRuleCollectionGroup -Name $groupName -Priority $GroupPriority -ResourceGroupName $ResourceGroupName -FirewallPolicyName $FirewallPolicyName -RuleCollection $collections -DefaultProfile $context -Confirm:$false
+`
+}
+
+const azfwCli = (rules: Rule[], { policyName }: Options) => {
+  if (!active(rules).length) return '#!/usr/bin/env bash\n# No enabled Azure network rules; no create/update operation generated.\n'
+  const data = azfwScriptData(rules, policyName)
+  const hasFqdns = data.properties.ruleCollections.some((collection) => collection.rules.some((rule) => rule.destinationFqdns?.length))
+  return `#!/usr/bin/env bash
+# ${AZURE_SCRIPT_WARNING}
+# Bash + Azure CLI core az rest (checked with CLI 2.91.0). No firewall extension required.
+# Sign in with az login outside this script. API 2024-05-01 matches the Bicep output.
+set -euo pipefail
+if [[ $# -gt 1 || ( $# -eq 1 && $1 != '--apply' ) ]]; then
+  printf '%s\\n' 'Usage: bash azure-firewall.sh [--apply]' >&2
+  exit 1
+fi
+body_file=$(mktemp)
+trap 'rm -f -- "$body_file"' EXIT
+cat > "$body_file" <<'FIREWALL_FORGE_JSON'
+${JSON.stringify(data, null, 2)}
+FIREWALL_FORGE_JSON
+if [[ \${1:-} != '--apply' ]]; then
+  cat "$body_file"
+  printf '%s\\n' 'Review only: no Azure calls. --apply creates or REPLACES the entire named group; back up existing rules first.' >&2
+  exit 0
+fi
+: "\${AZURE_SUBSCRIPTION_ID:?Set AZURE_SUBSCRIPTION_ID}"
+: "\${AZURE_RESOURCE_GROUP:?Set AZURE_RESOURCE_GROUP}"
+: "\${AZURE_FIREWALL_POLICY:?Set AZURE_FIREWALL_POLICY}"
+# Restrict path inputs to safe ASCII resource names; no URL fragments or query injection.
+[[ $AZURE_SUBSCRIPTION_ID =~ ^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$ ]] || { printf '%s\\n' 'Invalid subscription UUID' >&2; exit 1; }
+[[ $AZURE_RESOURCE_GROUP =~ ^[a-zA-Z0-9_.()-]+$ && $AZURE_FIREWALL_POLICY =~ ^[a-zA-Z0-9_.-]+$ ]] || { printf '%s\\n' 'Use ASCII resource names without spaces or URL delimiters' >&2; exit 1; }
+policy_id="/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.Network/firewallPolicies/$AZURE_FIREWALL_POLICY"
+${hasFqdns ? `dns_proxy=$(az rest --method get --url "$policy_id?api-version=2024-05-01" --query properties.dnsSettings.enableProxy --output tsv)
+[[ \${dns_proxy,,} == 'true' ]] || { printf '%s\\n' 'Enable policy DNS proxy separately before applying FQDN rules' >&2; exit 1; }
+` : ''}# One PUT replaces this group, including any previous application/DNAT collections.
+# The response may be provisioning; verify provisioningState is Succeeded before relying on rules.
+az rest --method put --url "$policy_id/ruleCollectionGroups/${slug(policyName).slice(0, 80).replace(/-$/, '')}?api-version=2024-05-01" --headers 'Content-Type=application/json' --body "@$body_file"
+`
+}
+
 const generators: Target[] = [
   { id: 'nsx', platform: 'nsx', label: 'NSX DFW', format: 'Terraform', filename: 'main.tf', generate: nsx },
   { id: 'nsx-ps', platform: 'nsx', label: 'NSX DFW', format: 'PowerShell (REST)', filename: 'nsx-policy-rest.ps1', generate: nsxPs },
@@ -1218,6 +1338,8 @@ const generators: Target[] = [
   { id: 'azl-bicep', platform: 'azl', label: 'Azure Local NSG', format: 'Bicep', filename: 'azl-nsg.bicep', generate: azlBicep },
   { id: 'azfw-tf', platform: 'azfw', label: 'Azure Firewall', format: 'Terraform', filename: 'azure-firewall.tf', generate: azfwTerraform },
   { id: 'azfw-bicep', platform: 'azfw', label: 'Azure Firewall', format: 'Bicep', filename: 'azure-firewall.bicep', generate: azfwBicep },
+  { id: 'azfw-ps', platform: 'azfw', label: 'Azure Firewall', format: 'PowerShell (Az.Network)', filename: 'azure-firewall.ps1', generate: azfwPowerShell },
+  { id: 'azfw-cli', platform: 'azfw', label: 'Azure Firewall', format: 'Azure CLI (REST)', filename: 'azure-firewall.sh', generate: azfwCli },
   { id: 'windows', platform: 'windows', label: 'Windows Firewall', format: 'PowerShell', filename: 'windows-firewall.ps1', generate: windows },
   { id: 'nftables', platform: 'nftables', label: 'nftables', format: 'nft', filename: 'rules.nft', generate: nftables },
   { id: 'nftables-ansible', platform: 'nftables', label: 'nftables', format: 'Ansible', filename: 'nftables.yml', generate: nftablesAnsible },
@@ -1239,6 +1361,10 @@ const generators: Target[] = [
 export const TARGETS: Target[] = generators.map((target) => ({
   ...target,
   generate: (rules, options) => {
+    if (target.id === 'azfw-ps' || target.id === 'azfw-cli') {
+      const errors = validate(active(rules), target.id).filter((issue) => issue.level === 'error')
+      if (errors.length) return '# BLOCKED: fix Azure rule errors; no configuration generated.\n' + errors.flatMap((issue) => issue.message.split(/[\r\n\u2028\u2029\u0085]/u).map((line) => `# ${line}`)).join('\n') + '\n'
+    }
     const errors = disabledOutputErrors(rules, target.id)
     if (errors.length && target.platform !== 'mikrotik') return blockedDisabledOutput(errors.map((issue) => issue.message), target.id)
     const warning = disabledRuleWarning(rules, target.id)

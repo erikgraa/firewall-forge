@@ -1,6 +1,6 @@
 import { TARGETS } from './generators'
 import { disabledRuleWarning } from './disabledRules'
-import { disabledOutputErrors } from './validate'
+import { disabledOutputErrors, validate } from './validate'
 import type { Options } from './generators'
 import type { RuleSection } from './grouping'
 import type { Rule, TargetId } from './model'
@@ -82,8 +82,10 @@ export function generateGroupedOutput(
   const block = (reason: string) => result(comment(`Grouped output blocked: ${reason}`) + '\n', [reason, unverified], true)
   if (!rules.length) return result('')
   const target = TARGETS.find((candidate) => candidate.id === targetId)!
-  const errors = disabledOutputErrors(rules, targetId)
-  if (errors.length) return result(target.generate(rules, options), ['Generation blocked: fix rule errors, including disabled rules.', ...errors.map((issue) => issue.message)], true)
+  const errors = targetId === 'azfw-ps' || targetId === 'azfw-cli'
+    ? validate(rules.filter((rule) => rule.enabled), targetId).filter((issue) => issue.level === 'error')
+    : disabledOutputErrors(rules, targetId)
+  if (errors.length) return result(target.generate(rules, options), [targetId === 'azfw-ps' || targetId === 'azfw-cli' ? 'Generation blocked: fix enabled Azure rule errors.' : 'Generation blocked: fix rule errors, including disabled rules.', ...errors.map((issue) => issue.message)], true)
   const isNsx = targetId === 'nsx' || targetId === 'nsx-ps' || targetId === 'nsx-sdk'
   if (targetId !== 'windows' && (!isNsx || !separatePolicies)) return result(target.generate(rules, options))
 
