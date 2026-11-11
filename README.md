@@ -10,7 +10,7 @@
 
 A static TypeScript + React app. Everything runs in your browser, nothing is sent anywhere. 🔒
 
-🌐 [firewall-forge.graa.dev](https://firewall-forge.graa.dev)
+🌐 [firewallforge.graa.dev](https://firewallforge.graa.dev)
 
 </div>
 
@@ -154,11 +154,13 @@ npm run update-providers   # 🔄 refresh Terraform provider versions from the r
 
 Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`. 🚢
 
+The production hostname is `firewallforge.graa.dev`. For a hostname change, an administrator must verify domain ownership and set **Settings → Pages → Custom domain** to that hostname, with its DNS `CNAME` pointing to `erikgraa.github.io` (not a repository path). Wait for DNS validation and a certificate covering the new hostname, then enable or confirm **Enforce HTTPS** and check the deployed page and social image over HTTPS. This repository uses a custom Actions deployment: GitHub Pages ignores the artifact's `CNAME` for domain configuration, so editing `public/CNAME` does **not** update live Pages settings or provision a certificate. See [GitHub's custom-domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site). A DNS alias for a previous hostname does not provide an HTTP redirect or certificate coverage; preserving old links requires separately managed HTTPS and redirects.
+
 ### Social link previews
 
 `index.html` includes static description, canonical, Open Graph and Twitter-card metadata so Discord and similar crawlers do not need to run React. The generic 1200 × 630 PNG at `public/social-preview.png` uses the existing app logo, not a user's policy or screenshot. Shared-rule query/hash content is never copied into this metadata; this is not a guarantee that an unfurling service won't receive or cache the URL you paste, so avoid posting sensitive share links.
 
-Canonical and social-image URLs use the production HTTPS domain in `public/CNAME` (`https://firewall-forge.graa.dev/`). The image is copied unchanged to the build root; app assets still use Vite's relative `base: './'`. If hosting a fork at another origin or a project subpath, update the canonical, `og:url`, `og:image` and `twitter:image` URLs together, including that subpath. Crawlers must be able to fetch the initial HTML and PNG publicly without authentication.
+Canonical and social-image URLs match the production HTTPS hostname recorded in `public/CNAME` (`https://firewallforge.graa.dev/`). The image is copied unchanged to the build root; app assets still use Vite's relative `base: './'`. If hosting a fork at another origin or a project subpath, update the canonical, `og:url`, `og:image` and `twitter:image` URLs together, including that subpath. Crawlers must be able to fetch the initial HTML and PNG publicly without authentication.
 
 Preview changes take effect after deployment, and Discord/other services may cache older previews or suppress embeds through user/server settings. Local HTML/image checks do not prove a live unfurl or force a cache refresh; verify the deployed URLs and a fresh paste after release.
 

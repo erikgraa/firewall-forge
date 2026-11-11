@@ -229,7 +229,7 @@ describe('home logo', () => {
 
     const markup = renderToStaticMarkup(<App />).replace(/<svg class="button-icon"[\s\S]*?<\/svg>/g, '')
     expect(markup).toContain(
-      `<a class="logo-link" href="https://firewall-forge.graa.dev" aria-label="Firewall Forge home"><img src="${import.meta.env.BASE_URL}${icon}" alt="" class="logo"/></a>`,
+      `<a class="logo-link" href="https://firewallforge.graa.dev" aria-label="Firewall Forge home"><img src="${import.meta.env.BASE_URL}${icon}" alt="" class="logo"/></a>`,
     )
   })
 

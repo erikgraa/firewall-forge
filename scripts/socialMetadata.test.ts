@@ -26,7 +26,8 @@ describe('static social previews', () => {
     expect(meta('twitter:card')).toBe('summary_large_image')
   })
 
-  it('uses the deployed canonical origin rather than shared-rule parameters or relative asset paths', () => {
+  it('uses the production canonical origin rather than shared-rule parameters or relative asset paths', () => {
+    expect(host).toBe('firewallforge.graa.dev')
     expect(canonical).toBe(`https://${host}/`)
     expect(meta('og:url')).toBe(canonical)
     expect(meta('og:image')).toBe(`https://${host}/social-preview.png`)
