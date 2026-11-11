@@ -22,7 +22,7 @@ A static TypeScript + React app. Everything runs in your browser, nothing is sen
 | --- | --- | --- |
 | ☁️ | NSX DFW | Terraform (`vmware/nsxt`) or PowerShell (`VMware.Sdk.Nsx.Policy` module, or the Policy REST API via `Invoke-RestMethod`); selectable DFW category (Emergency, Infrastructure, Environment, Application); optionally project-scoped (`nsxt_policy_project` data source + `context` block, project-scoped cmdlet / API path) |
 | 🪟 | Windows Server SDN ACL | PowerShell (Network Controller cmdlets) |
-| 🔥 | Azure Firewall (policy) | Terraform (`azurerm_firewall_policy_rule_collection_group`) or Bicep (`Microsoft.Network/firewallPolicies/ruleCollectionGroups`), network rules |
+| 🔥 | Azure Firewall (policy) | Terraform (`azurerm_firewall_policy_rule_collection_group`), Bicep, PowerShell (Az.Network), or Azure CLI (REST); network rules |
 | 🔷 | Azure Local NSG | `az stack-hci-vm network nsg` commands, or Bicep (`Microsoft.AzureStackHCI/networkSecurityGroups`) |
 | 🧱 | Windows Defender Firewall | `New-NetFirewallRule` |
 | 🐧 | firewalld (RHEL / Fedora) | `firewall-cmd` rich rules and policies, or Ansible (`ansible.posix.firewalld`) |
@@ -92,6 +92,21 @@ Switch between **Rules** and **Topology** in the collapsible Policy workspace. B
 The SVG shows **configured rule intent**, not discovered devices, live traffic, an effective-policy simulation or guaranteed reachability. Nodes are address matchers, including grouped presets and lists—not individual devices or generated resource counts. Route numbers preserve table order but do not simulate target evaluation. DROP/REJECT destination links are dashed matcher associations without delivery arrows; disabled routes have no arrows. Invalid matchers, services, ports and duplicate names are excluded with editable diagnostics rather than replaced with Any. Shared target warnings and generation guards still apply.
 
 Only MikroTik native and Terraform output show `input` / `forward` / `output` lanes, using the same Auto/explicit-chain mapping as the generators. Other platforms use a generic policy context: scope, zones, priorities, inherited rules and platform defaults must be reviewed in the target-specific fields and warnings. No default deny, established/related or return-traffic rules are added. The Mermaid/zone-view and diagram-export roadmap remains a separate follow-up.
+
+## 🔥 Azure Firewall script outputs
+
+Select **Azure Firewall → PowerShell (Az.Network)** or **Azure CLI (REST)** and download `azure-firewall.ps1` or `azure-firewall.sh`. Both generate **network rules only** for one named rule collection group in an **existing Firewall Policy**. They do not create a firewall/policy, attach a policy, configure routing/DNS/diagnostics, or connect from the browser.
+
+**Review first:** run `./azure-firewall.ps1` in PowerShell or `bash azure-firewall.sh` in Bash. Without explicit apply consent, PowerShell prints the native rule/collection construction code and group name/priority locally; CLI prints the ARM JSON. Neither makes Azure calls or requires a module/login for review. PowerShell uses splatted hashtables, arrays and native Az.Network objects, with no embedded JSON or JSON conversion. Empty/all-disabled policies generate no create/update operation. Invalid mappings block generation and Copy/Download. Credentials, sign-in and execution belong outside the browser.
+
+**Applying replaces the entire named group**, including any existing application/DNAT collections in it; it does not merge or append. Back up that group and choose a dedicated group name. Repeated application converges that group's contents; other groups/policy settings remain untouched. There is no concurrent-edit protection: coordinate ownership. This same group may be Terraform/Bicep-managed—do not manage it simultaneously through multiple tools. The policy/ACL name field determines the sanitized group name; collection names include index/action. Existing Terraform/Bicep output now uses valid unique collection names instead of `--`, so review deployment diffs before applying.
+
+- **PowerShell:** emitted native cmdlet parameters are checked with **Az.Network 7.14.0**; the script requires at least that version. Sign in and select your subscription separately, then run `./azure-firewall.ps1 -SubscriptionId '<uuid>' -ResourceGroupName '<rg>' -FirewallPolicyName '<policy>' -Apply`. It checks the current context and asks for replacement confirmation; `-WhatIf` stops before Azure access. `-GroupPriority 1000` is configurable from 100–65000. The reviewed group cmdlet uses CreateOrUpdate; its serialization replaces apostrophes, so Notes containing apostrophes are blocked for PowerShell—use CLI to preserve them. Check installed module behavior when upgrading.
+- **CLI:** uses **core `az rest`**, checked with **Azure CLI 2.91.0**, and ARM API **2024-05-01** (same as Bicep); no preview `azure-firewall` extension is needed. Sign in separately with `az login`, set `AZURE_SUBSCRIPTION_ID`, `AZURE_RESOURCE_GROUP`, and `AZURE_FIREWALL_POLICY`, then run `bash azure-firewall.sh --apply`. Uses the CLI's configured ARM cloud endpoint; resource path inputs are restricted to ASCII safe names. Group priority is 1000 in the reviewable JSON; edit it deliberately if needed. PUT may return while provisioning: independently verify the group's `provisioningState` is `Succeeded` before relying on it.
+
+List order produces consecutive same-action collections at priorities 1000, 1100, etc. (lower first); DROP maps to Deny and ALLOW to Allow. REJECT, explicit per-rule priority/logging, foreign-target fields, IPv6, IP/named groups, service tags, wildcard FQDNs, and ICMP/ANY with port restrictions are blocked rather than silently changed. Supports IPv4/CIDR, endpoint presets, Any/`*`, TCP/UDP ports/ranges, and exact destination FQDNs. IP and FQDN destinations cannot coexist in one network rule; use separate same-action rules. FQDN network rules require policy DNS proxy (checked before apply) and match resolved IPs, **not** HTTP host/SNI. Direction is informational source→destination matching; TCP/UDP return traffic is stateful. Parent policies/earlier groups may win; DNAT precedes network rules, which precede application rules. Group priorities must not conflict with existing groups; no live policy inventory is available in the browser.
+
+Official references, local checks and remaining live-deployment gaps are recorded in [docs/SOURCES.md](docs/SOURCES.md). These outputs have **not been validated on a live Azure firewall**.
 
 ## 📡 MikroTik RouterOS
 
@@ -166,7 +181,7 @@ Preview changes take effect after deployment, and Discord/other services may cac
 
 ## 📋 Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and the release checklist. The current release is **0.8.5** (release tag **v0.8.5**), following the initial **0.8.0** baseline; versions 0.8.1–0.8.4 were not published. The footer displays the app version injected by Vite from `package.json` in development, tests and production; update package/lock versions together with `npm version <version> --no-git-tag-version`, rather than editing a second footer constant. Restart the dev server after a version change.
+See [CHANGELOG.md](CHANGELOG.md) for user-facing changes and the release checklist. The current release is **0.9.0** (release tag **v0.9.0**), adding Azure Firewall Policy PowerShell and Azure CLI outputs after **0.8.5** and the initial **0.8.0** baseline; versions 0.8.1–0.8.4 were not published. The footer displays the app version injected by Vite from `package.json` in development, tests and production; update package/lock versions together with `npm version <version> --no-git-tag-version`, rather than editing a second footer constant. Restart the dev server after a version change.
 
 The README badge tracks the latest **published GitHub release**, not an unpublished package version or tag alone; badge caches may delay newly published releases. Before 1.0, minor releases may introduce incompatible changes; use patch releases for compatible fixes and document breaking changes/migrations explicitly. Version 0.8.0 is a project maturity baseline, not evidence of eight previous releases or complete live validation across targets. See [docs/SOURCES.md](docs/SOURCES.md) for verification gaps.
 
@@ -206,6 +221,7 @@ See [docs/SOURCES.md](docs/SOURCES.md) for product documentation, output-tool re
 - [ ] 🐡 pf output (FreeBSD / OpenBSD / OPNsense / pfSense)
 - [ ] ☁️ AWS security groups and Azure NSGs (Terraform)
 - [x] 🔥☁️ Azure Firewall policy rule collection groups: Terraform and Bicep (network rules only)
+- [x] 🔥📜 Azure Firewall PowerShell (Az.Network) and Azure CLI (REST) network-rule outputs with review-only defaults and explicit group-replacement consent — [#49](https://github.com/erikgraa/firewall-forge/issues/49); live Azure validation remains outstanding.
 - [ ] 🌍 Azure Firewall application rules (FQDN / FQDN tags) and DNAT rules
 - [ ] ☸️ Kubernetes mode: a separate **Firewall | Kubernetes** switch with its own rule table (pod/VM label selectors, namespaces, ingress/egress) and outputs for NetworkPolicy and AdminNetworkPolicy first, then Antrea (vSphere Kubernetes), OVN EgressFirewall (OpenShift Virtualization), Cilium and Calico; warn that NetworkPolicy is allow-only
 - [x] ⚠️ Per-target warnings for unsupported options (no reject on Windows, deny-only on Cisco)

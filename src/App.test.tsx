@@ -46,6 +46,29 @@ describe('persisted section workspace', () => {
   })
 })
 
+describe('Azure Firewall script formats', () => {
+  it.each(['azfw-ps', 'azfw-cli'] as const)('%s restores, renders both format choices and exposes replacement scope', (target) => {
+    const stored = serializeWorkspace({ rules: [{ ...blankRule(), name: 'azure-web', destination: '10.20.0.10' }], target, policyName: 'azure-preview' })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />)
+    expect(markup).toContain('data-platform="azfw" aria-pressed="true"')
+    expect(markup).toContain('PowerShell (Az.Network)')
+    expect(markup).toContain('Azure CLI (REST)')
+    expect(markup).toContain('removing all previous collections/rules in that group')
+    expect(markup).toContain(target === 'azfw-ps' ? 'New-AzFirewallPolicyRuleCollectionGroup' : 'az rest')
+  })
+
+  it('shows mapping errors and disables copying/downloading invalid Azure output', () => {
+    const stored = serializeWorkspace({ rules: [{ ...blankRule(), name: 'azure-reject', action: 'REJECT' }], target: 'azfw-cli', policyName: 'azure-preview' })
+    vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : key === WORKSPACE_KEY ? stored : null })
+    const markup = renderToStaticMarkup(<App />).replace(/<svg class="button-icon"[\s\S]*?<\/svg>/g, '')
+    expect(markup).toContain('cannot represent REJECT')
+    expect(markup).toContain('disabled="">Copy</button>')
+    expect(markup).toContain('disabled="">Download azure-firewall.sh</button>')
+    expect(markup).not.toContain('az rest --method put')
+  })
+})
+
 describe('policy workspace', () => {
   it('starts expanded with accessible tabs and a clean slate for new users', () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'fwgen.theme' ? 'light' : null })

@@ -1,5 +1,6 @@
 import { ENDPOINTS, SERVICES, baseTarget } from './model'
 import { routerosIssues } from './routeros'
+import { azureScriptIssues, AZURE_SCRIPT_WARNING } from './azureFirewall'
 import { supportsDisabledRules } from './disabledRules'
 import type { Rule, TargetId } from './model'
 
@@ -28,7 +29,7 @@ export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
       }
     }
     for (const [field, value] of [['source', r.source], ['destination', r.destination]] as const) {
-      if (/^\d/.test(value.trim())) {
+      if (target !== 'azfw-ps' && target !== 'azfw-cli' && /^\d/.test(value.trim())) {
         for (const part of value.split(',')) {
           const t = part.trim()
           const octetsOk = t.split('/')[0].split('.').every((o) => Number(o) <= 255)
@@ -48,6 +49,12 @@ export const validate = (rules: Rule[], target?: TargetId): Issue[] => {
   const firstDrop = enabled.findIndex((r) => r.action !== 'ALLOW' && r.source === 'Any' && r.destination === 'Any' && !r.ports.trim())
   if (firstDrop >= 0 && firstDrop < enabled.length - 1)
     issues.push({ level: 'warn', message: `"${enabled[firstDrop].name}" is a catch-all drop but is not the last enabled rule — later enabled rules never match` })
+  if (target === 'azfw-ps' || target === 'azfw-cli') {
+    issues.push(...azureScriptIssues(rules), { level: 'warn', message: AZURE_SCRIPT_WARNING })
+    if (target === 'azfw-ps') {
+      for (const rule of enabled) if (rule.notes.includes("'")) issues.push({ level: 'error', message: `${rule.name}: Az.Network's reviewed group cmdlet serialization replaces apostrophes; use Azure CLI output to preserve these Notes.` })
+    }
+  }
   if (target) issues.push(...targetWarnings(supportsDisabledRules(target) ? rules : enabled, target))
   return issues
 }

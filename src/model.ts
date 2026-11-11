@@ -1,7 +1,7 @@
 export type Action = 'ALLOW' | 'DROP' | 'REJECT'
 export type Direction = 'Inbound' | 'Outbound'
 export type Protocol = 'TCP' | 'UDP' | 'ICMP' | 'ANY'
-export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk' | 'azfw-tf' | 'azfw-bicep' | 'mikrotik' | 'mikrotik-tf'
+export type TargetId = 'nsx' | 'sdn-ps' | 'azl-nsg' | 'azl-bicep' | 'firewalld' | 'windows' | 'cisco' | 'panos' | 'fmc' | 'nftables' | 'iptables' | 'nsx-ps' | 'nftables-ansible' | 'iptables-ansible' | 'firewalld-ansible' | 'panos-1x' | 'cisco-ansible' | 'cisco-tf' | 'panos-ansible' | 'nsx-sdk' | 'azfw-tf' | 'azfw-bicep' | 'azfw-ps' | 'azfw-cli' | 'mikrotik' | 'mikrotik-tf'
 
 export interface Rule {
   id: string

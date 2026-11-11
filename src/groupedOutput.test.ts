@@ -28,12 +28,26 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('generateGroupedOutput passthrough', () => {
+  it.each(['azfw-ps', 'azfw-cli'] as const)('blocks unsupported enabled %s rules and omits unsupported disabled rules', (target) => {
+    const blocked = generate(target)
+    expect(blocked.blocked).toBe(true)
+    expect(blocked.code).toContain('BLOCKED:')
+    expect(blocked.warnings).toContain('Generation blocked: fix enabled Azure rule errors.')
+    const data = rules.map((rule) => rule.id === 'one' ? { ...rule, enabled: false, name: 'invalid\nname' } : rule)
+    const omitted = generate(target, data, [], {})
+    expect(omitted.blocked).toBe(false)
+    expect(omitted.code).not.toContain('BLOCKED:')
+    expect(omitted.code).toContain('disabled rule omitted')
+    expect(omitted.code).not.toContain('invalid\nname')
+  })
+
   it.each(['nsx', 'nsx-ps', 'nsx-sdk'] as const)('preserves %s single-policy code byte for byte', (target) => {
     expect(generate(target, rules, sections, titles, false)).toEqual({ code: original(target), warnings: [], blocked: false })
   })
 
   it.each(TARGETS.filter((target) => !['nsx', 'nsx-ps', 'nsx-sdk', 'windows'].includes(target.id)).map((target) => target.id))('passes %s through even when separate policies are requested', (target) => {
-    expect(generate(target)).toEqual({ code: original(target), warnings: [], blocked: false })
+    const data = target === 'azfw-ps' || target === 'azfw-cli' ? rules.map((rule) => ({ ...rule, scope: '', logging: false })) : rules
+    expect(generate(target, data)).toEqual({ code: original(target, data), warnings: [], blocked: false })
   })
 
   it.each(TARGETS.map((target) => target.id))('returns empty code for an empty %s rule array', (target) => {
